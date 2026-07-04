@@ -35,11 +35,18 @@ elif [[ -d "${LEGACY_RUNTIME_DIR}" ]]; then
     echo "INFO: No .big assets found; using existing legacy runtime ${LEGACY_RUNTIME_DIR}"
 fi
 
-# Locate the installed Vulkan SDK (tries ~/VulkanSDK/ by convention)
+# Locate the installed Vulkan SDK: explicit $VULKAN_SDK / $VULKAN_SDK_ROOT
+# first (issue #1), then the conventional ~/VulkanSDK/<version>/macOS glob.
+_VULKAN_SDK_ENV="${VULKAN_SDK:-}"; _VULKAN_SDK_ROOT_ENV="${VULKAN_SDK_ROOT:-}"
 VULKAN_SDK_ROOT=""
-for sdk_candidate in "${HOME}/VulkanSDK"/*/macOS; do
+for sdk_candidate in "${_VULKAN_SDK_ENV}" "${_VULKAN_SDK_ROOT_ENV}" "${HOME}/VulkanSDK"/*/macOS; do
+    [[ -n "${sdk_candidate}" ]] || continue
     if [[ -f "${sdk_candidate}/lib/libvulkan.dylib" ]]; then
         VULKAN_SDK_ROOT="${sdk_candidate}"
+        break
+    elif [[ -f "${sdk_candidate}/macOS/lib/libvulkan.dylib" ]]; then
+        VULKAN_SDK_ROOT="${sdk_candidate}/macOS"
+        break
     fi
 done
 BINARY_SRC="${BUILD_DIR}/GeneralsMD/GeneralsXZH"
@@ -117,7 +124,7 @@ if [[ -n "${VULKAN_SDK_ROOT}" ]]; then
 EOF
     echo "  Vulkan SDK libs deployed from: ${VULKAN_SDK_ROOT}"
 else
-    echo "WARNING: Vulkan SDK not found at ~/VulkanSDK/*/macOS."
+    echo "WARNING: Vulkan SDK not found (checked \$VULKAN_SDK, \$VULKAN_SDK_ROOT, ~/VulkanSDK/*/macOS)."
     echo "  Install the Vulkan SDK from https://vulkan.lunarg.com/"
     echo "  DXVK will fail to find vkGetInstanceProcAddr at runtime."
 fi

@@ -90,21 +90,32 @@ resolve_vcpkg_root() {
 
 resolve_vcpkg_root
 
-# Vulkan SDK check
-VULKAN_FOUND=0
-for sdk_candidate in "${HOME}/VulkanSDK"/*/macOS; do
+# Vulkan SDK check — honor an explicit $VULKAN_SDK / $VULKAN_SDK_ROOT first
+# (issue #1: users export it from ~/.zshrc or install outside ~/VulkanSDK),
+# then fall back to the conventional ~/VulkanSDK/<version>/macOS glob.
+RESOLVED_VULKAN_SDK=""
+for sdk_candidate in "${VULKAN_SDK:-}" "${VULKAN_SDK_ROOT:-}" "${HOME}/VulkanSDK"/*/macOS; do
+    [[ -n "${sdk_candidate}" ]] || continue
+    # accept either the .../macOS dir itself or an SDK root that contains it
     if [[ -f "${sdk_candidate}/lib/libvulkan.dylib" ]]; then
-        VULKAN_FOUND=1
-        echo "Vulkan SDK found: ${sdk_candidate}"
+        RESOLVED_VULKAN_SDK="${sdk_candidate}"
+        break
+    elif [[ -f "${sdk_candidate}/macOS/lib/libvulkan.dylib" ]]; then
+        RESOLVED_VULKAN_SDK="${sdk_candidate}/macOS"
         break
     fi
 done
-if [[ "$VULKAN_FOUND" -eq 0 ]]; then
-    echo "ERROR: Vulkan SDK not found in ~/VulkanSDK/"
+if [[ -z "${RESOLVED_VULKAN_SDK}" ]]; then
+    echo "ERROR: Vulkan SDK not found (checked \$VULKAN_SDK, \$VULKAN_SDK_ROOT, ~/VulkanSDK/*/macOS)"
     echo "Install from: https://vulkan.lunarg.com/sdk/home#mac"
-    echo "Default install path: ~/VulkanSDK/<version>/macOS"
+    echo "Then: export VULKAN_SDK=\$HOME/VulkanSDK/<version>/macOS"
     exit 1
 fi
+echo "Vulkan SDK found: ${RESOLVED_VULKAN_SDK}"
+export VULKAN_SDK="${RESOLVED_VULKAN_SDK}"
+# issue #2: DXVK's Meson configure needs glslangValidator, which ships in the
+# SDK's bin/ — put it on PATH so a fresh machine doesn't fail mid-configure.
+export PATH="${RESOLVED_VULKAN_SDK}/bin:${PATH}"
 
 # ── Configure ────────────────────────────────────────────────────────────────
 
