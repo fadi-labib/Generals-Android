@@ -74,8 +74,9 @@ else()
     if(NOT dxvk_SOURCE_DIR)
         message(FATAL_ERROR "DXVK not fetched! Ensure SAGE_USE_DX8=OFF and cmake/dx8.cmake was included")
     endif()
-    if(APPLE)
-        # macOS: DXVK built from git source -- Wine-style include/native layout
+    if(APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+        # macOS + Android: DXVK built from the fbraz3 fork -- Wine-style include/native layout
+        # GeneralsX @build FadiLabib 06/07/2026 - Android reuses the fork header layout (Task P3-2)
         target_include_directories(d3d8lib INTERFACE
             ${dxvk_SOURCE_DIR}/include/native
             ${dxvk_SOURCE_DIR}/include/native/windows
@@ -92,7 +93,7 @@ else()
     # (_deps/dxvk-build-macos/src/d3d*/), not in ${dxvk_SOURCE_DIR}/lib — that path does not exist.
     # Linux prebuilt DXVK native package does have a lib/ dir, so the guard is macOS-only.
     # Passing a non-existent -L path produces: ld: warning: search path '.../dxvk-src/lib' not found
-    if(NOT APPLE)
+    if(NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
         target_link_directories(d3d8lib INTERFACE
             ${dxvk_SOURCE_DIR}/lib
         )
@@ -126,6 +127,14 @@ set_property(TARGET d3dx8 PROPERTY CXX_STANDARD 17)
 if(APPLE AND TARGET dxvk_macos_build)
     add_dependencies(d3dx8 dxvk_macos_build)
     add_dependencies(CompatLib dxvk_macos_build)
+endif()
+# GeneralsX @build FadiLabib 06/07/2026 - Android cross-builds DXVK via Meson ExternalProject
+# (Task P3-2). Same ordering rationale as macOS: the fork's include/native/windows headers
+# and the arm64 .so's must exist before d3dx8/CompatLib compile, and building the game must
+# pull in the DXVK .so build (the ExternalProject is otherwise orphaned under --target).
+if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND TARGET dxvk_android_build)
+    add_dependencies(d3dx8 dxvk_android_build)
+    add_dependencies(CompatLib dxvk_android_build)
 endif()
 
 target_include_directories(CompatLib PUBLIC 
