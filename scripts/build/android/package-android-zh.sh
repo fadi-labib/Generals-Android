@@ -41,6 +41,11 @@ copy_lib "${BUILD_DIR}/_deps/sdl3-build/libSDL3.so*" 1
 copy_lib "${BUILD_DIR}/_deps/sdl3_image-build/libSDL3_image.so*" 1
 copy_lib "${BUILD_DIR}/_deps/openal_soft-build/libopenal.so*" 1
 copy_lib "${BUILD_DIR}/libgamespy.so" 0
+# GeneralsX @build FadiLabib 06/07/2026
+# DXVK d3d8/d3d9: dx8wrapper.cpp bare-name dlopen's "libdxvk_d3d8.so" on Android/Linux;
+# both must ship in the APK so the dynamic linker resolves them from nativeLibraryDir.
+copy_lib "${BUILD_DIR}/libdxvk_d3d8.so" 1
+copy_lib "${BUILD_DIR}/libdxvk_d3d9.so" 1
 # Versioned .so names (libSDL3.so.0) are not loadable from an APK: keep bare .so only.
 for f in "${JNILIBS}"/*.so.*; do [[ -e "$f" ]] && rm "$f"; done
 
