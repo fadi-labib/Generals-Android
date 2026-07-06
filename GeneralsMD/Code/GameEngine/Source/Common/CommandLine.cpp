@@ -415,6 +415,38 @@ Int parseMapName(char *args[], int num)
 	return 1;
 }
 
+// GeneralsX @feature FadiLabib 06/07/2026 Record a headless AI-vs-AI skirmish on the given map.
+// Combine with -headless to produce a self-consistent replay on this platform. The map name is
+// given in short form (e.g. "Maps/Tournament Desert.map") and expanded to the map-cache long path.
+Int parseSkirmishReplay(char *args[], int num)
+{
+	if (num >= 2)
+	{
+		TheWritableGlobalData->m_skirmishRecordMap.set( args[ 1 ] );
+		ConvertShortMapPathToLongMapPath(TheWritableGlobalData->m_skirmishRecordMap);
+
+		// Same startup suppression as -replay: no intro/sizzle/shell map, go straight into the game.
+		TheWritableGlobalData->m_playIntro = FALSE;
+		TheWritableGlobalData->m_afterIntro = TRUE;
+		TheWritableGlobalData->m_playSizzle = FALSE;
+		TheWritableGlobalData->m_shellMapOn = FALSE;
+		return 2;
+	}
+	return 1;
+}
+
+// GeneralsX @feature FadiLabib 06/07/2026 Frame cap for -skirmishReplay: finalize the .rep and quit
+// after this many logic frames (0 = run until an AI wins). Default is set in GlobalData.cpp.
+Int parseSkirmishFrames(char *args[], int num)
+{
+	if (num >= 2)
+	{
+		TheWritableGlobalData->m_skirmishRecordMaxFrames = atoi( args[ 1 ] );
+		return 2;
+	}
+	return 1;
+}
+
 Int parseHeadless(char *args[], int num)
 {
 	TheWritableGlobalData->m_headless = TRUE;
@@ -1183,6 +1215,11 @@ static CommandLineParam paramsForEngineInit[] =
 
 	// TheSuperHackers @feature xezon 03/08/2025 Force full viewport for 'Control Bar Pro' Addons like GenTool did it.
 	{ "-forcefullviewport", parseFullViewport },
+
+	// GeneralsX @feature FadiLabib 06/07/2026 Headless AI-vs-AI skirmish recording. Available in all build
+	// configs (unlike -map, which is RTS_DEBUG only) so it can record a replay on-device for Phase 2 validation.
+	{ "-skirmishReplay", parseSkirmishReplay },
+	{ "-skirmishFrames", parseSkirmishFrames },
 
 #if defined(RTS_DEBUG)
 	{ "-noaudio", parseNoAudio },

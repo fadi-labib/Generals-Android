@@ -360,6 +360,12 @@ public:
 	std::vector<AsciiString> m_simulateReplays; ///< If not empty, simulate this list of replays and exit.
 	Int m_simulateReplayJobs; ///< Maximum number of processes to use for simulation, or SIMULATE_REPLAYS_SEQUENTIAL for sequential simulation
 
+	// GeneralsX @feature FadiLabib 06/07/2026 Headless AI-vs-AI skirmish recording: record a self-contained
+	// replay on this platform (no rendering, no human input) so it can be played back self-consistently.
+	AsciiString m_skirmishRecordMap;		///< If set, start an AI-vs-AI GAME_SKIRMISH on this map so the recorder captures it
+	Int m_skirmishRecordMaxFrames;			///< Finalize the replay and quit after this many logic frames (0 = run until an AI wins)
+	Bool m_skirmishRecordActive;			///< Runtime latch: TRUE once the headless skirmish record start has been fired
+
 	Int m_maxParticleCount;						///< maximum number of particles that can exist
 	Int m_maxFieldParticleCount;			///< maximum number of field-type particles that can exist (roughly)
 	WeaponBonusSet* m_weaponBonusSet;

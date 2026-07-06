@@ -652,6 +652,10 @@ GlobalData::GlobalData()
 	m_framesPerSecondLimit = 0;
 	m_chipSetType = 0;
 	m_headless = FALSE;
+	// GeneralsX @feature FadiLabib 06/07/2026 Headless AI-vs-AI skirmish recording
+	m_skirmishRecordMap.clear();
+	m_skirmishRecordMaxFrames = 2000;
+	m_skirmishRecordActive = FALSE;
 	m_checkForUpdates = TRUE;
 	m_windowed = 0;
 	m_xResolution = DEFAULT_DISPLAY_WIDTH;

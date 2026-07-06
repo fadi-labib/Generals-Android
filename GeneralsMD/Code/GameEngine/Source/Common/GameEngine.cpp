@@ -102,6 +102,7 @@
 #include "GameClient/GUICallbacks.h"
 
 #include "GameNetwork/NetworkInterface.h"
+#include "GameNetwork/GameInfo.h" // GeneralsX @feature FadiLabib 06/07/2026 SkirmishGameInfo/GameSlot for headless skirmish recording
 #include "GameNetwork/WOLBrowser/WebBrowser.h"
 #include "GameNetwork/LANAPI.h"
 #include "GameNetwork/GameSpy/GameResultsThread.h"
@@ -357,6 +358,86 @@ Bool GameEngine::isGameHalted()
 	}
 
 	return false;
+}
+
+// GeneralsX @feature FadiLabib 06/07/2026 -----------------------------------------------------------
+// Headless AI-vs-AI skirmish recording.
+//
+// This is the minimal, programmatic equivalent of what the GUI Skirmish menu does in
+// SkirmishGameOptionsMenu.cpp (populate TheSkirmishGameInfo, then reallyDoStart()'s
+// MSG_NEW_GAME(GAME_SKIRMISH)). We build a two-AI slot list on the requested map and fire the same
+// message. RecorderClass::updateRecord() auto-starts recording on that MSG_NEW_GAME (Recorder.cpp),
+// serializing TheSkirmishGameInfo into the .rep header, so no recorder changes are needed. Both AIs
+// are on team -1 (free-for-all) so they are mutual enemies (isSandbox()==FALSE) and the multiplayer
+// victory scripts load; color/faction/start-pos are left random (-1) and resolved deterministically
+// from the recorded seed. No rendering or human input is required: under -headless the client
+// subsystems are dummied and the load screen is skipped (see GameLogic::startNewGame).
+static void startHeadlessSkirmishRecording()
+{
+	AsciiString mapName = TheGlobalData->m_skirmishRecordMap;
+	DEBUG_LOG(("[SKIRMISH_REC] startHeadlessSkirmishRecording() map='%s'", mapName.str()));
+
+	if (!TheSkirmishGameInfo)
+		TheSkirmishGameInfo = NEW SkirmishGameInfo;
+	TheSkirmishGameInfo->init();
+	TheSkirmishGameInfo->clearSlotList();
+	TheSkirmishGameInfo->reset();
+	TheSkirmishGameInfo->setLocalIP(0);
+	TheSkirmishGameInfo->enterGame();
+
+	// Two AI players, opposing (free-for-all), random-but-seeded color/faction/start.
+	for (Int i = 0; i < 2; ++i)
+	{
+		GameSlot aiSlot;
+		aiSlot.setState(SLOT_MED_AI);
+		aiSlot.setColor(-1);          // random, resolved from the recorded seed
+		aiSlot.setPlayerTemplate(-1); // random faction, resolved from the recorded seed
+		aiSlot.setStartPos(-1);       // random start spot, resolved from the recorded seed
+		aiSlot.setTeamNumber(-1);     // free-for-all -> mutual enemies
+		TheSkirmishGameInfo->setSlot(i, aiSlot);
+	}
+
+	TheSkirmishGameInfo->setMap(mapName);
+	const MapMetaData *md = TheMapCache ? TheMapCache->findMap(mapName) : nullptr;
+	if (md)
+	{
+		TheSkirmishGameInfo->setMapCRC(md->m_CRC);
+		TheSkirmishGameInfo->setMapSize(md->m_filesize);
+		DEBUG_LOG(("[SKIRMISH_REC] map found: CRC=0x%08x size=%d players=%d",
+			md->m_CRC, md->m_filesize, md->m_numPlayers));
+	}
+	else
+	{
+		TheSkirmishGameInfo->setMapCRC(0);
+		TheSkirmishGameInfo->setMapSize(0);
+		DEBUG_LOG(("[SKIRMISH_REC] WARNING: map '%s' not found in MapCache", mapName.str()));
+		fprintf(stderr, "[SKIRMISH_REC] ERROR: map '%s' not found in MapCache; aborting skirmish record\n", mapName.str());
+		fflush(stderr);
+		return;
+	}
+
+	// Fixed seed so the recording is reproducible across runs; it is written into the .rep and
+	// re-applied on playback, so record and playback resolve the same random colors/factions/spots.
+	const Int seed = 1;
+	TheSkirmishGameInfo->setSeed(seed);
+	TheSkirmishGameInfo->startGame(0);
+
+	// startNewGame loads the map from TheGlobalData->m_mapName (GameLogic.cpp), mirror reallyDoStart().
+	TheWritableGlobalData->m_mapName = mapName;
+	TheWritableGlobalData->m_pendingFile = mapName;
+
+	InitRandom(seed);
+
+	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_NEW_GAME );
+	msg->appendIntegerArgument(GAME_SKIRMISH);
+	msg->appendIntegerArgument(DIFFICULTY_NORMAL);
+	msg->appendIntegerArgument(0);     // rankPoints (unused here)
+	msg->appendIntegerArgument(1000);  // FPS cap; high so the headless sim runs at full speed
+
+	TheWritableGlobalData->m_skirmishRecordActive = TRUE;
+	fprintf(stderr, "[SKIRMISH_REC] fired MSG_NEW_GAME(GAME_SKIRMISH) map='%s' seed=%d maxFrames=%d\n",
+		mapName.str(), seed, TheGlobalData->m_skirmishRecordMaxFrames);
+	fflush(stderr);
 }
 
 /** -----------------------------------------------------------------------------------------------
@@ -795,6 +876,14 @@ void GameEngine::init()
 			}
 		}
 
+		// GeneralsX @feature FadiLabib 06/07/2026 Headless AI-vs-AI skirmish record path. When
+		// -skirmishReplay <map> is given (typically with -headless), start a 2-AI GAME_SKIRMISH so the
+		// recorder captures a self-contained on-platform replay. Runs after MapCache->updateCache() above.
+		if (TheGlobalData->m_skirmishRecordMap.isEmpty() == FALSE)
+		{
+			startHeadlessSkirmishRecording();
+		}
+
 		//
 		if (TheMapCache && TheGlobalData->m_shellMapOn)
 		{
@@ -993,6 +1082,40 @@ void GameEngine::update()
 			// TheSuperHackers @info Still update the Script Engine to allow
 			// for scripted camera movements while the time is frozen.
 			TheScriptEngine->UPDATE();
+		}
+
+		// GeneralsX @feature FadiLabib 06/07/2026 Headless AI-vs-AI skirmish record: terminate cleanly.
+		// Two exit paths, both finalize a valid .rep: (1) the frame cap is reached while still recording
+		// -> stop recording, clear game data, quit (mirrors the RTS_DEBUG benchmark-timer shutdown in
+		// GameEngine::execute()); (2) an AI wins before the cap -> the game ends naturally, the recorder
+		// has already been finalized via MSG_CLEAR_GAME_DATA, so we just quit.
+		if (TheGlobalData->m_skirmishRecordActive)
+		{
+			static Bool s_sawSkirmishRecording = FALSE;
+			const Bool recording = (TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_RECORD);
+			if (recording)
+				s_sawSkirmishRecording = TRUE;
+
+			if (recording
+				&& TheGlobalData->m_skirmishRecordMaxFrames > 0
+				&& (Int)TheGameLogic->getFrame() >= TheGlobalData->m_skirmishRecordMaxFrames)
+			{
+				fprintf(stderr, "[SKIRMISH_REC] reached frame cap %d; finalizing replay and quitting\n",
+					TheGlobalData->m_skirmishRecordMaxFrames);
+				fflush(stderr);
+				TheRecorder->stopRecording();
+				TheGameLogic->clearGameData();
+				TheGameEngine->setQuitting(TRUE);
+				TheWritableGlobalData->m_skirmishRecordActive = FALSE;
+			}
+			else if (s_sawSkirmishRecording && !recording)
+			{
+				fprintf(stderr, "[SKIRMISH_REC] game ended (AI won) at frame %d; replay finalized, quitting\n",
+					TheGameLogic->getFrame());
+				fflush(stderr);
+				TheGameEngine->setQuitting(TRUE);
+				TheWritableGlobalData->m_skirmishRecordActive = FALSE;
+			}
 		}
 	}
 }

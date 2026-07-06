@@ -1350,7 +1350,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	//****************************//
 
 	// Get the m_loadScreen for this kind of game
-	if(!m_loadScreen && !(TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK))
+	// GeneralsX @feature FadiLabib 06/07/2026 Never build a load screen in headless mode. The existing
+	// guard only skipped it during replay simulation (RECORDERMODETYPE_SIMULATION_PLAYBACK); a fresh
+	// headless GAME_SKIRMISH record would otherwise enter the load-screen UI path. Headless has no
+	// display, so skip it entirely (keeps the headless skirmish-record start free of client/UI setup).
+	if(!m_loadScreen && !TheGlobalData->m_headless && !(TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK))
 	{
 		m_loadScreen = getLoadScreen( loadingSaveGame );
 		if(m_loadScreen)
