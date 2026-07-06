@@ -46,6 +46,13 @@ copy_lib "${BUILD_DIR}/libgamespy.so" 0
 # both must ship in the APK so the dynamic linker resolves them from nativeLibraryDir.
 copy_lib "${BUILD_DIR}/libdxvk_d3d8.so" 1
 copy_lib "${BUILD_DIR}/libdxvk_d3d9.so" 1
+# GeneralsX @build FadiLabib 06/07/2026
+# Shared libc++: libmain.so (ANDROID_STL=c++_shared) and the DXVK .so's now all
+# NEED libc++_shared.so, so it must ship in the APK or nothing loads. One NDK
+# copy for all three -> a DxvkError thrown in DXVK type-matches std::exception in
+# libmain.so (single libc++abi/RTTI), surfacing the real Vulkan error.
+NDK_LIBCXX="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
+copy_lib "${NDK_LIBCXX}" 1
 # Versioned .so names (libSDL3.so.0) are not loadable from an APK: keep bare .so only.
 for f in "${JNILIBS}"/*.so.*; do [[ -e "$f" ]] && rm "$f"; done
 

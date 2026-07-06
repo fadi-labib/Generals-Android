@@ -3272,16 +3272,47 @@ void STLSpecialAlloc::deallocate(void* __p, size_t)
 	TheDynamicMemoryAllocator->freeBytes(__p);
 }
 
+// GeneralsX @build FadiLabib 06/07/2026 Android shared-libc++ allocator reconciliation.
+//
+// The engine overrides the *global* operator new/delete to route every allocation
+// through TheDynamicMemoryAllocator (the game pool). On Windows/Linux/macOS this is
+// safe even with a shared libc++, because those dynamic loaders use a single flat
+// symbol namespace: the game's strong operator new/delete interpose libc++'s, so the
+// C++ runtime and the game share ONE allocator.
+//
+// Android's bionic linker does NOT do that. Symbol resolution is per-DSO: libc++_shared.so
+// resolves operator new/delete to its OWN internal (bionic malloc/free) definitions and
+// never looks them up in libmain.so. So under ANDROID_STL=c++_shared a std::string /
+// std::filesystem buffer allocated by libmain (game pool) but grown/freed inside
+// libc++_shared.so is passed to bionic je_free() -> SIGSEGV (observed crashing in
+// std::__ndk1::basic_string::append <- std::filesystem::path::operator/= <-
+// GlobalData::BuildUserDataPathFromRegistry). There is no way to make bionic route
+// libc++_shared's internal frees back into the game pool.
+//
+// The only consistent choice on Android is to make libmain's global operator new/delete
+// use the SAME allocator libc++_shared uses: bionic malloc/free. The game pool is still
+// used by MemoryPoolObject subclasses and direct DynamicMemoryAllocator calls (those are
+// self-contained and never cross into libc++). Only the global channel changes here.
+#ifdef __ANDROID__
+	#include <cstdlib>
+	#define GX_GLOBAL_ALLOC(size) (::malloc(size))
+	#define GX_GLOBAL_FREE(p)     (::free(p))
+#else
+	#define GX_GLOBAL_ALLOC(size) (TheDynamicMemoryAllocator->allocateBytes((size), "global operator new"))
+	#define GX_GLOBAL_FREE(p)     (TheDynamicMemoryAllocator->freeBytes(p))
+#endif
+
 //-----------------------------------------------------------------------------
 /**
-	overload for global operator new; send requests to TheDynamicMemoryAllocator.
+	overload for global operator new; send requests to TheDynamicMemoryAllocator
+	(or bionic malloc on Android — see note above).
 */
 void *operator new(size_t size)
 {
 	++theLinkTester;
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
-	return TheDynamicMemoryAllocator->allocateBytes(size, "global operator new");
+	return GX_GLOBAL_ALLOC(size);
 }
 
 //-----------------------------------------------------------------------------
@@ -3293,7 +3324,7 @@ void *operator new[](size_t size)
 	++theLinkTester;
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
-	return TheDynamicMemoryAllocator->allocateBytes(size, "global operator new[]");
+	return GX_GLOBAL_ALLOC(size);
 }
 
 //-----------------------------------------------------------------------------
@@ -3305,7 +3336,7 @@ void operator delete(void *p)
 	++theLinkTester;
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
-	TheDynamicMemoryAllocator->freeBytes(p);
+	GX_GLOBAL_FREE(p);
 }
 
 //-----------------------------------------------------------------------------
@@ -3317,7 +3348,28 @@ void operator delete[](void *p)
 	++theLinkTester;
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
-	TheDynamicMemoryAllocator->freeBytes(p);
+	GX_GLOBAL_FREE(p);
+}
+
+//-----------------------------------------------------------------------------
+// GeneralsX @build FadiLabib 06/07/2026 C++14 sized operator delete. Under
+// ANDROID_STL=c++_shared, libc++_shared.so calls the sized delete(void*, size_t);
+// if the game does not define it, the shared libc++'s OWN sized delete runs. These
+// must free through the same allocator as global operator new (bionic on Android).
+void operator delete(void *p, size_t) noexcept
+{
+	++theLinkTester;
+	preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
+	GX_GLOBAL_FREE(p);
+}
+
+void operator delete[](void *p, size_t) noexcept
+{
+	++theLinkTester;
+	preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
+	GX_GLOBAL_FREE(p);
 }
 
 //-----------------------------------------------------------------------------
@@ -3329,7 +3381,9 @@ void* operator new(size_t size, const char * fname, int)
 	++theLinkTester;
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
-#ifdef MEMORYPOOL_DEBUG
+#ifdef __ANDROID__
+	return ::malloc(size);
+#elif defined(MEMORYPOOL_DEBUG)
 	return TheDynamicMemoryAllocator->allocateBytesImplementation(size, fname);
 #else
 	return TheDynamicMemoryAllocator->allocateBytesImplementation(size);
@@ -3345,7 +3399,7 @@ void operator delete(void * p, const char *, int)
 	++theLinkTester;
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
-	TheDynamicMemoryAllocator->freeBytes(p);
+	GX_GLOBAL_FREE(p);
 }
 
 //-----------------------------------------------------------------------------
@@ -3357,7 +3411,9 @@ void* operator new[](size_t size, const char * fname, int)
 	++theLinkTester;
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
-#ifdef MEMORYPOOL_DEBUG
+#ifdef __ANDROID__
+	return ::malloc(size);
+#elif defined(MEMORYPOOL_DEBUG)
 	return TheDynamicMemoryAllocator->allocateBytesImplementation(size, fname);
 #else
 	return TheDynamicMemoryAllocator->allocateBytesImplementation(size);
@@ -3373,7 +3429,7 @@ void operator delete[](void * p, const char *, int)
 	++theLinkTester;
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
-	TheDynamicMemoryAllocator->freeBytes(p);
+	GX_GLOBAL_FREE(p);
 }
 
 //-----------------------------------------------------------------------------
