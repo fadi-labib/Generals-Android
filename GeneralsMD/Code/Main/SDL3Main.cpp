@@ -52,6 +52,11 @@
 #include <android/log.h>
 #include <pthread.h>
 #include <cstdint>
+// GeneralsX @feature FadiLabib 07/07/2026 Turnip-via-adrenotools driver staging.
+// dladdr() locates the APK nativeLibraryDir; sys/stat + fcntl copy the driver.
+#include <dlfcn.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #endif
 #endif
 #include <cstdlib>
@@ -191,6 +196,116 @@ static void gxRedirectStdioToLogcat()
 		close(pipeFd[0]);
 		close(pipeFd[1]);
 	}
+}
+
+// GeneralsX @feature FadiLabib 07/07/2026 Stage the bundled Mesa Turnip driver and
+// point DXVK's Vulkan loader at it via adrenotools. WHY: the stock Qualcomm driver
+// on the Adreno 650 only exposes Vulkan 1.1, which DXVK 2.6 rejects ("Skipping
+// Vulkan 1.1 adapter" -> "No adapters found. A Vulkan 1.3 capable driver is
+// required"). Turnip (Mesa, freedreno) implements Vulkan 1.3+ for Adreno 6xx.
+//
+// adrenotools requires: (a) its hook libs (libhook_impl.so / libmain_hook.so) in
+// the APK nativeLibraryDir, and (b) the custom driver in a PRIVATE, non-sdcard dir
+// that dlopen trusts (not world-writable). We bundle the driver as the jniLib
+// libvulkan_freedreno.so (so Android extracts it to nativeLibraryDir), then copy it
+// once into the app's internal files dir under its real name, and export the three
+// env vars the DXVK loader (vulkan_loader.cpp adrenotools branch) reads.
+//
+// nativeLibraryDir is discovered with dladdr() on this function — it lives in
+// libmain.so, which sits in nativeLibraryDir alongside the hook libs.
+static bool gxCopyFile(const char *src, const char *dst)
+{
+	int in = open(src, O_RDONLY);
+	if (in < 0) {
+		fprintf(stderr, "WARNING: Turnip: open(%s) failed: %s\n", src, strerror(errno));
+		return false;
+	}
+	int out = open(dst, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+	if (out < 0) {
+		fprintf(stderr, "WARNING: Turnip: open(%s) for write failed: %s\n", dst, strerror(errno));
+		close(in);
+		return false;
+	}
+	char buf[65536];
+	ssize_t n;
+	bool ok = true;
+	while ((n = read(in, buf, sizeof(buf))) > 0) {
+		ssize_t off = 0;
+		while (off < n) {
+			ssize_t w = write(out, buf + off, (size_t)(n - off));
+			if (w <= 0) { ok = false; break; }
+			off += w;
+		}
+		if (!ok) break;
+	}
+	if (n < 0) ok = false;
+	close(in);
+	close(out);
+	return ok;
+}
+
+static void gxSetupTurnipDriver()
+{
+	// Driver soname as it ships in the adrenotools package meta.json. adrenotools
+	// dlopens this exact filename from GENERALSX_TURNIP_DRIVER_DIR.
+	static const char *DRIVER_NAME = "vulkan.ad07xx.so";
+	// The jniLib we ship the Turnip .so as (Android only extracts lib*.so names).
+	static const char *BUNDLED_SONAME = "libvulkan_freedreno.so";
+
+	// 1) nativeLibraryDir: the directory containing this very .so (libmain.so).
+	Dl_info info;
+	if (dladdr(reinterpret_cast<void *>(&gxSetupTurnipDriver), &info) == 0 || info.dli_fname == nullptr) {
+		fprintf(stderr, "WARNING: Turnip: dladdr failed; cannot locate nativeLibraryDir — stock driver will be used\n");
+		return;
+	}
+	char nativeLibDir[1024];
+	snprintf(nativeLibDir, sizeof(nativeLibDir), "%s", info.dli_fname);
+	if (char *slash = strrchr(nativeLibDir, '/')) {
+		*slash = '\0';
+	}
+
+	// 2) Private files dir (dlopen-trusted, not sdcard) to hold the copied driver.
+	const char *filesDir = SDL_GetAndroidInternalStoragePath();
+	if (filesDir == nullptr) {
+		fprintf(stderr, "WARNING: Turnip: internal storage path unavailable — stock driver will be used\n");
+		return;
+	}
+
+	char srcPath[1024];
+	char dstPath[1024];
+	snprintf(srcPath, sizeof(srcPath), "%s/%s", nativeLibDir, BUNDLED_SONAME);
+	snprintf(dstPath, sizeof(dstPath), "%s/%s", filesDir, DRIVER_NAME);
+
+	if (access(srcPath, R_OK) != 0) {
+		fprintf(stderr, "WARNING: Turnip: bundled driver %s not found (%s) — stock driver will be used\n",
+		        BUNDLED_SONAME, strerror(errno));
+		return;
+	}
+
+	// Copy once; refresh if the bundled driver changed size (e.g. after an update).
+	struct stat srcStat{}, dstStat{};
+	const bool haveDst = (stat(dstPath, &dstStat) == 0);
+	const bool haveSrc = (stat(srcPath, &srcStat) == 0);
+	if (!haveDst || !haveSrc || srcStat.st_size != dstStat.st_size) {
+		if (!gxCopyFile(srcPath, dstPath)) {
+			fprintf(stderr, "WARNING: Turnip: failed to stage driver to %s — stock driver will be used\n", dstPath);
+			return;
+		}
+		fprintf(stderr, "INFO: Turnip: staged driver -> %s (%lld bytes)\n",
+		        dstPath, (long long)srcStat.st_size);
+	} else {
+		fprintf(stderr, "INFO: Turnip: driver already staged at %s\n", dstPath);
+	}
+
+	// 3) Export the loader contract. DRIVER_DIR MUST end with '/': adrenotools
+	// stat()s customDriverDir + customDriverName by string concatenation.
+	char driverDir[1024];
+	snprintf(driverDir, sizeof(driverDir), "%s/", filesDir);
+	setenv("GENERALSX_ADRENOTOOLS_HOOK_DIR", nativeLibDir, 1);
+	setenv("GENERALSX_TURNIP_DRIVER_DIR", driverDir, 1);
+	setenv("GENERALSX_TURNIP_DRIVER_NAME", DRIVER_NAME, 1);
+	fprintf(stderr, "INFO: Turnip: adrenotools env set (hookLibDir=%s driverDir=%s name=%s)\n",
+	        nativeLibDir, driverDir, DRIVER_NAME);
 }
 #endif // __ANDROID__
 
@@ -375,6 +490,12 @@ int main(int argc, char* argv[])
 		fprintf(stderr, "INFO: Android working directory: %s, HOME=%s\n",
 		        GX_ANDROID_ASSET_DIR, internal ? internal : "<unset>");
 	}
+
+	// GeneralsX @feature FadiLabib 07/07/2026 Stage Turnip + set the adrenotools env
+	// BEFORE any Vulkan load (SDL_Vulkan_LoadLibrary below, and DXVK's own loader when
+	// the d3d8 device is created). Gives DXVK a Vulkan 1.3 adapter instead of the
+	// stock Adreno 1.1 driver it rejects.
+	gxSetupTurnipDriver();
 #endif
 
 #if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE

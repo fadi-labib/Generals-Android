@@ -53,6 +53,24 @@ copy_lib "${BUILD_DIR}/libdxvk_d3d9.so" 1
 # libmain.so (single libc++abi/RTTI), surfacing the real Vulkan error.
 NDK_LIBCXX="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
 copy_lib "${NDK_LIBCXX}" 1
+# GeneralsX @build FadiLabib 07/07/2026 - Mesa Turnip via libadrenotools (Vulkan 1.3).
+# adrenotools + its linker-namespace hooks (build-adrenotools.sh) MUST land in
+# nativeLibraryDir: adrenotools_open_libvulkan preloads libhook_impl.so and
+# libmain_hook.so from hookLibDir (= nativeLibraryDir). All five ship as jniLibs.
+ADRENOTOOLS_OUT="${PROJECT_ROOT}/build/android-adrenotools/out"
+copy_lib "${ADRENOTOOLS_OUT}/libadrenotools.so" 1
+copy_lib "${ADRENOTOOLS_OUT}/libhook_impl.so" 1
+copy_lib "${ADRENOTOOLS_OUT}/libmain_hook.so" 1
+copy_lib "${ADRENOTOOLS_OUT}/libfile_redirect_hook.so" 1
+copy_lib "${ADRENOTOOLS_OUT}/libgsl_alloc_hook.so" 1
+# The Turnip driver (fetch-turnip.sh) ships under a lib*-prefixed name so Android
+# extracts it to nativeLibraryDir (only lib*.so are extracted). SDL3Main.cpp copies
+# it once into the private files dir under its real soname and hands adrenotools the
+# path. It is NOT loaded as a NEEDED dependency — it is opened by the Turnip hook.
+TURNIP_SO="${PROJECT_ROOT}/build/android-turnip/pkg/vulkan.ad07xx.so"
+[[ -f "${TURNIP_SO}" ]] || { echo "ERROR: Turnip driver not found at ${TURNIP_SO} — run scripts/build/android/fetch-turnip.sh" >&2; exit 1; }
+cp "${TURNIP_SO}" "${JNILIBS}/libvulkan_freedreno.so"
+echo "  embedded libvulkan_freedreno.so (Mesa Turnip driver)"
 # Versioned .so names (libSDL3.so.0) are not loadable from an APK: keep bare .so only.
 for f in "${JNILIBS}"/*.so.*; do [[ -e "$f" ]] && rm "$f"; done
 
