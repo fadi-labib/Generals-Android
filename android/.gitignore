@@ -1,0 +1,7 @@
+app/jniLibs/
+app/sdl-java/
+app/build/
+.gradle/
+local.properties
+gradle/
+gradlew*

@@ -1,0 +1,21 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.generalsx.generalszh'
+    compileSdk 34
+    defaultConfig {
+        applicationId project.findProperty('GX_APP_ID') ?: 'com.generalsx.generalszh'
+        minSdk 29
+        targetSdk 29   // sideload-only: keeps requestLegacyExternalStorage effective
+        versionCode 1
+        versionName "1.04"
+        ndk { abiFilters 'arm64-v8a' }
+    }
+    buildTypes {
+        debug { debuggable true }
+    }
+    sourceSets.main {
+        jniLibs.srcDirs = ['jniLibs']       // populated by package-android-zh.sh
+        java.srcDirs = ['src/main/java', 'sdl-java']  // sdl-java copied from SDL3 source
+    }
+}
