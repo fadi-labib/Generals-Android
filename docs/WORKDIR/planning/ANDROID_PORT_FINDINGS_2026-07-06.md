@@ -179,3 +179,9 @@ Full write-up: `docs/WORKDIR/audit/BUG_ENDIAN_COMPAT_LETOH_2026-07-06.md`.
 
 Approved design spec: `docs/superpowers/specs/2026-07-06-android-port-design.md`.
 Lessons from the read-through: `docs/WORKDIR/lessons/2026-07-LESSONS.md`.
+
+**Status update (2026-07-06):** Phases 0-2 executed — see `docs/BUILD/ANDROID.md` for the
+verified build/packaging/asset/headless-verification instructions and gate evidence. Phase
+3+ plan (renderer bring-up on the `require-turnip` route decided in
+`ANDROID_RENDERER_RESEARCH_2026-07.md` §5, touch/lifecycle, audio/video, parity polish) is to
+be written next, against this verified baseline.
