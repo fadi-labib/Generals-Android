@@ -1,0 +1,55 @@
+# DXVK Android patch
+#
+# Local modifications to references/fbraz3-dxvk (at 46a3bc01) used to
+# cross-build the libdxvk_d3d8/d3d9 .so's for arm64-android (bionic/NDK r27)
+# that package-android-zh.sh embeds in jniLibs.
+#
+# Single fix: the fork's macOS/MoltenVK VK_KHR_portability_subset handling in
+# dxvk_adapter.cpp references VkPhysicalDevicePortabilitySubsetFeaturesKHR /
+# VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME, which only exist when
+# VK_ENABLE_BETA_EXTENSIONS is defined (the fork does so under #ifdef __APPLE__
+# at the top of the file). The *use* sites were left unguarded, so an Android
+# (non-__APPLE__) build fails with "use of undeclared identifier". Portability
+# subset is a MoltenVK-only concept — Android runs real Vulkan (Turnip / stock
+# Adreno) — so the two use blocks are guarded under #ifdef __APPLE__ to match.
+#
+# Apply with: git -C references/fbraz3-dxvk apply Patches/dxvk-android.patch
+# Then build with: meson setup --cross-file <cmake/meson-arm64-android-cross.ini> \
+#                    -Ddxvk_native_wsi=sdl3 --buildtype=release
+diff --git a/src/dxvk/dxvk_adapter.cpp b/src/dxvk/dxvk_adapter.cpp
+index 981b0003..f7c2b12b 100644
+--- a/src/dxvk/dxvk_adapter.cpp
++++ b/src/dxvk/dxvk_adapter.cpp
+@@ -340,10 +340,15 @@ namespace dxvk {
+     // macOS/MoltenVK: VK_KHR_portability_subset MUST be enabled when the device supports it.
+     // Without it, vkCreateDevice rejects valid features (robustBufferAccess2, nullDescriptor, etc.)
+     // with VK_ERROR_FEATURE_NOT_PRESENT due to MoltenVK's portability subset enforcement.
++    // GeneralsX @android FadiLabib 06/07/2026 - Portability subset is a MoltenVK-only concept;
++    // its VK_ENABLE_BETA_EXTENSIONS types only exist under __APPLE__. Android runs real Vulkan
++    // (Turnip / stock Adreno) with no portability subset, so guard the whole block out there.
++#ifdef __APPLE__
+     const bool hasPortabilitySubset =
+       m_deviceExtensions.supports(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME) != 0u;
+     if (hasPortabilitySubset)
+       extensionsEnabled.add(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
++#endif
+ 
+     DxvkNameList extensionNameList = extensionsEnabled.toNameList();
+ 
+@@ -520,6 +525,8 @@ namespace dxvk {
+     // VkPhysicalDevicePortabilitySubsetFeaturesKHR in VkDeviceCreateInfo.pNext set to
+     // device-queried values. Without this, MoltenVK may reject features it reported as
+     // supported in vkGetPhysicalDeviceFeatures2 (e.g. robustBufferAccess2, nullDescriptor).
++    // GeneralsX @android FadiLabib 06/07/2026 - __APPLE__-only (see block above).
++#ifdef __APPLE__
+     VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityFeatures = {
+       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR };
+     if (hasPortabilitySubset) {
+@@ -528,6 +535,7 @@ namespace dxvk {
+       m_vki->vkGetPhysicalDeviceFeatures2(m_handle, &query);
+       portabilityFeatures.pNext = std::exchange(enabledFeatures.core.pNext, &portabilityFeatures);
+     }
++#endif
+ 
+     // Log feature support info an extension list
+     Logger::info(str::format("Device properties:"
