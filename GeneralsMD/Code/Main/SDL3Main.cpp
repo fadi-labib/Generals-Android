@@ -34,15 +34,21 @@
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
-// On iOS, SDL renames main() to SDL_main and provides its own UIApplicationMain
-// bootstrap; the app lifecycle (suspend/resume, window) is owned by SDL.
+#if (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) || defined(__ANDROID__)
+// GeneralsX @build FadiLabib 06/07/2026 On iOS and Android, SDL owns the app
+// lifecycle: SDL_main.h renames main() to SDL_main, which SDL's bootstrap
+// (UIApplicationMain / SDLActivity JNI) invokes.
 #include <SDL3/SDL_main.h>
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
 #include <cerrno>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <filesystem>
 #include <string>
+#elif defined(__ANDROID__)
+// GeneralsX @build FadiLabib 06/07/2026 Android bootstrap needs cerrno for strerror(errno) in chdir() diagnostics.
+#include <cerrno>
+#endif
 #endif
 #include <cstdlib>
 #include <cctype>
@@ -253,6 +259,32 @@ int main(int argc, char* argv[])
 	// Store command line arguments in globals for CommandLine.cpp parser
 	__argc = argc;
 	__argv = argv;
+
+#if defined(__ANDROID__)
+	// GeneralsX @feature FadiLabib 06/07/2026 Android bootstrap.
+	// The engine resolves ALL game data relative to the working directory
+	// (see StdLocalFileSystem); assets are pushed to /sdcard/GeneralsZH by
+	// scripts/build/android/push-assets-android.sh (targetSdk 29 +
+	// requestLegacyExternalStorage keeps that path readable).
+	// HOME must exist because GlobalData's user-data path and the registry
+	// shim derive from it on the POSIX branch; Android doesn't set it.
+	{
+		static const char *GX_ANDROID_ASSET_DIR = "/sdcard/GeneralsZH";
+		const char *internal = SDL_GetAndroidInternalStoragePath();
+		if (internal != nullptr) {
+			setenv("HOME", internal, 0);
+			setenv("XDG_DATA_HOME", internal, 0);
+		}
+		if (chdir(GX_ANDROID_ASSET_DIR) != 0) {
+			fprintf(stderr, "FATAL: chdir(%s) failed: %s — push assets first "
+			        "(scripts/build/android/push-assets-android.sh)\n",
+			        GX_ANDROID_ASSET_DIR, strerror(errno));
+			return 1;
+		}
+		fprintf(stderr, "INFO: Android working directory: %s, HOME=%s\n",
+		        GX_ANDROID_ASSET_DIR, internal ? internal : "<unset>");
+	}
+#endif
 
 #if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
 	// Diagnostic capture: an icon-launched app's stderr goes nowhere we can read,

@@ -1,3 +1,10 @@
+# GeneralsX @build FadiLabib 06/07/2026 Android: SDL3's SDLActivity loads the game
+# as a shared library named libmain.so and calls its SDL_main. Everything else
+# stays an executable.
+if(ANDROID)
+    add_library(z_generals SHARED)
+    set_target_properties(z_generals PROPERTIES OUTPUT_NAME "main")
+else()
 add_executable(z_generals WIN32)
 
 # Use a binary name that doesn't conflict with original game.
@@ -7,6 +14,7 @@ if("${CMAKE_SYSTEM}" MATCHES "Windows")
 else()
     # GeneralsX @build BenderAI 15/02/2026 Linux branding update
     set_target_properties(z_generals PROPERTIES OUTPUT_NAME GeneralsXZH)
+endif()
 endif()
 
 # GeneralsX @build BenderAI 13/02/2026 Windows-specific libraries
