@@ -70,6 +70,9 @@ Turnip has emulation), SDL3 Android maturity, prior SDL3+DXVK Android ports.
 *Deliverable:* findings doc + **go/pivot decision** on the renderer route
 (stock driver / require-Turnip / format-transcode fallback).
 *Gate:* renderer route decided on evidence.
+> **Decision (2026-07-06):** `require-turnip` — Adreno-first, bundle Mesa Turnip via
+> libadrenotools; mainline DXVK 2.x on Vulkan 1.3. See
+> `docs/WORKDIR/planning/ANDROID_RENDERER_RESEARCH_2026-07.md` §5.
 
 **Phase 1 — Toolchain + scaffold.**
 Preset, triplet, vcpkg deps building, `libmain.so` wrapper target,
@@ -85,10 +88,18 @@ game logic on Android with zero graphics risk.
 *Gate:* a retail replay simulates to completion with correct CRC on the phone.
 
 **Phase 3 — Renderer bring-up.**
-DXVK meson cross-build per the Phase-0 decision; verify `Sdl3WsiDriver` via
-`strings` (silent SDL2 fallback is a known trap); dxvk .so's into jniLibs;
+DXVK meson cross-build per the Phase-0 decision (`require-turnip`): pin
+**mainline DXVK 2.x** (Turnip implements Vulkan 1.3 — no Sarek fork on the
+primary path), `-Ddxvk_native_wsi=sdl3`; verify `Sdl3WsiDriver` via `strings`
+(silent SDL2 fallback is a known trap); dxvk .so's into jniLibs;
 `dx8wrapper`'s existing Linux `LoadLibrary("libdxvk_d3d8.so")` branch; ship
 dxvk.conf (aniso 16×, logLevel none); Options.ini LOD seeding.
+**Turnip delivery (per Phase-0 decision):** integrate **libadrenotools**, bundle
+a Turnip adrenotools `.zip` (`meta.json` + `libvulkan_freedreno.so`) in the APK,
+and hook the driver load **before** DXVK creates its `VkInstance`; add a
+"running on Turnip" artifact check (`driverID == VK_DRIVER_ID_MESA_TURNIP`)
+alongside the WSI `strings` check — a silent fall-through to the stock driver is
+the same trap class.
 *Gate:* main menu renders at native resolution (the true halfway point).
 
 **Phase 4 — Input + lifecycle.**
@@ -133,8 +144,19 @@ SAF folder picker → copy into app storage. Explicitly outside parity scope.
 ## Pivot points (decided on evidence, not mid-crisis)
 
 1. **BCn unavailable on target drivers** → ranked: require Turnip-capable
-   devices → DXVK-side format emulation → asset-side DDS transcode at
-   extract time (last resort — storage and load-time cost).
+   devices → asset-side DDS transcode at extract time (last resort — storage
+   and load-time cost).
+   > Amended 2026-07-06 after Phase 0 research (§5.3): `require-turnip` is now the
+   > **baseline**, not a contingency. The old middle rung "DXVK-side format
+   > emulation" is **removed** — Task 3 (§3.2, [NEG]) established DXVK advertises
+   > native `VkFormat`s and has **no in-tree software BCn decode**. The real
+   > fallback ladder is: `require-turnip` (primary; [MERGED]-grade Turnip
+   > confidence = Adreno 6xx, 7xx is [WIP], 8xx/SD8-Elite has no Turnip yet and
+   > lands on the stock-driver rung) → `stock-driver` on Adreno 650+/7xx/8xx
+   > where the driver already reports Vk 1.3 + `textureCompressionBC` →
+   > `DXVK-Sarek` fork if a target caps below Vk 1.3 or lacks `transformFeedback`
+   > → `asset-transcode` (DXT→ASTC/ETC2 + D3D8 remap shim) for Mali, last resort
+   > → `no-go` if dxvk-native won't build against bionic/NDK.
 2. **DXVK cross-build intractable** → investigate upstream/community
    dxvk-native Android patches before writing our own; the fork+patch model
    already exists (`references/fbraz3-dxvk` + `Patches/dxvk-ios.patch`).
