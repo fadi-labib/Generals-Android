@@ -1,40 +1,11 @@
-# DXVK Android patch
-#
-# Local modifications to references/fbraz3-dxvk (at 46a3bc01) used to
-# cross-build the libdxvk_d3d8/d3d9 .so's for arm64-android (bionic/NDK r27)
-# that package-android-zh.sh embeds in jniLibs.
-#
-# Two fixes:
-#
-# (1) meson.build unconditionally links -static-libstdc++ for every non-Windows
-#     "native" build, so each of libdxvk_d3d8.so / libdxvk_d3d9.so statically
-#     embeds its own copy of libc++/libc++abi. With a private libc++abi per .so,
-#     a DxvkError thrown inside DXVK does NOT type-match std::exception as seen
-#     from libmain.so, so Direct3DCreate8's real Vulkan error falls into
-#     catch(...) and is lost. Dropping -static-libstdc++ makes the NDK clang link
-#     the SHARED libc++_shared.so by default; libmain.so (ANDROID_STL=c++_shared)
-#     links the same one, so exceptions/RTTI cross the .so boundary. Android only.
-#
-# (2) the fork's macOS/MoltenVK VK_KHR_portability_subset handling in
-# dxvk_adapter.cpp references VkPhysicalDevicePortabilitySubsetFeaturesKHR /
-# VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME, which only exist when
-# VK_ENABLE_BETA_EXTENSIONS is defined (the fork does so under #ifdef __APPLE__
-# at the top of the file). The *use* sites were left unguarded, so an Android
-# (non-__APPLE__) build fails with "use of undeclared identifier". Portability
-# subset is a MoltenVK-only concept — Android runs real Vulkan (Turnip / stock
-# Adreno) — so the two use blocks are guarded under #ifdef __APPLE__ to match.
-#
-# Apply with: git -C references/fbraz3-dxvk apply Patches/dxvk-android.patch
-# Then build with: meson setup --cross-file <cmake/meson-arm64-android-cross.ini> \
-#                    -Ddxvk_native_wsi=sdl3 --buildtype=release
 diff --git a/meson.build b/meson.build
-index 00000000..00000001 100644
+index 26afed45..4113407a 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -166,8 +166,11 @@ else
+@@ -166,10 +166,13 @@ else
    dxvk_name_prefix = 'dxvk_'
    dxvk_pkg_prefix = 'dxvk-'
-
+ 
 -  link_args += [
 -    '-static-libgcc',
 -    '-static-libstdc++',
@@ -47,6 +18,8 @@ index 00000000..00000001 100644
 +  # libmain.so also uses via ANDROID_STL=c++_shared), letting exceptions/RTTI
 +  # cross the .so boundary. macOS/iOS keep static (this patch is Android-only).
  endif
+ 
+ dxvk_include_path = include_directories(dxvk_include_dirs)
 diff --git a/src/dxvk/dxvk_adapter.cpp b/src/dxvk/dxvk_adapter.cpp
 index 981b0003..f7c2b12b 100644
 --- a/src/dxvk/dxvk_adapter.cpp
@@ -84,3 +57,20 @@ index 981b0003..f7c2b12b 100644
  
      // Log feature support info an extension list
      Logger::info(str::format("Device properties:"
+diff --git a/src/wsi/sdl3/wsi_platform_sdl3.cpp b/src/wsi/sdl3/wsi_platform_sdl3.cpp
+index 9975cdac..ba8e058d 100644
+--- a/src/wsi/sdl3/wsi_platform_sdl3.cpp
++++ b/src/wsi/sdl3/wsi_platform_sdl3.cpp
+@@ -15,6 +15,12 @@ namespace dxvk::wsi {
+         "SDL3.dll"
+ #elif defined(__APPLE__)
+         "libSDL3.0.dylib"
++// GeneralsX @android FadiLabib 07/07/2026 - Android strips the version suffix:
++// jniLibs ship an UNVERSIONED libSDL3.so (package script removes .so.*), so the
++// versioned libSDL3.so.0 dlopen fails ("Failed to load SDL3 DLL"). Load the
++// unversioned soname on Android.
++#elif defined(__ANDROID__)
++        "libSDL3.so"
+ #else
+         "libSDL3.so.0"
+ #endif
