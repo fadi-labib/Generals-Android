@@ -58,5 +58,13 @@ void* CreateThread(void *lpSecure, size_t dwStackSize, start_routine lpStartAddr
 
 int TerminateThread(void *hThread, unsigned long dwExitCode)
 {
+	// GeneralsX @build FadiLabib 06/07/2026 bionic has no pthread_cancel (Android never
+	// implemented pthread cancellation). Callers (async DNS lookup, WWLib worker join)
+	// only use this as a last-resort forced kill during shutdown; report failure instead
+	// of silently pretending success. See task-8 report for the caller audit.
+#if defined(__ANDROID__)
+	return -1; // not supported on Android
+#else
 	return pthread_cancel((pthread_t)hThread);
+#endif
 }

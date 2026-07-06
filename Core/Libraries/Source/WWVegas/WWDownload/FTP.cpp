@@ -30,7 +30,12 @@
 // Platform headers with socket_compat.h providing Winsock → POSIX mapping
 #include <stdio.h>
 #include <sys/types.h>
+// GeneralsX @build FadiLabib 06/07/2026 bionic (Android) has no legacy <sys/timeb.h>
+// (ftime/struct timeb). The header is unused in this translation unit, so skip it on
+// Android; every other platform keeps it exactly as before.
+#if !defined(__ANDROID__)
 #include <sys/timeb.h>
+#endif
 #include <stdlib.h>
 #ifdef _WIN32
 #include <process.h>

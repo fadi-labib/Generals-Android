@@ -59,7 +59,11 @@
 #include "GameLogic/ScriptEngine.h"
 #include "GameLogic/Weapon.h"
 
-#if __cplusplus >= 201611L && !defined(__APPLE__)
+// GeneralsX @build FadiLabib 06/07/2026 The NDK's libc++ ships std::from_chars for
+// integers but marks the floating-point overload deleted, so scanType<Real>() fails to
+// compile. Fall back to the sscanf path already used (and shipping) on Apple/iOS — this
+// keeps identical parsing semantics rather than introducing an Android-only code branch.
+#if __cplusplus >= 201611L && !defined(__APPLE__) && !defined(__ANDROID__)
 #define USE_STD_FROM_CHARS_PARSING 1
 #else
 #define USE_STD_FROM_CHARS_PARSING 0

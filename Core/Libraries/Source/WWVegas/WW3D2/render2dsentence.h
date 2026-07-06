@@ -51,7 +51,9 @@
         #include <TargetConditionals.h>
     #endif
     // iOS has no fontconfig; fonts resolve from a bundled fonts/ directory instead
-    #if !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE)
+    // GeneralsX @build FadiLabib 06/07/2026 Android has no fontconfig either — exclude
+    // the header so the bundled-font path (render2dsentence.cpp) compiles.
+    #if !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) && !defined(__ANDROID__)
         #include <fontconfig/fontconfig.h>
     #endif
 #endif

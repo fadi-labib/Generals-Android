@@ -239,8 +239,10 @@ add_library(corei_ww3d2 INTERFACE)
 target_sources(corei_ww3d2 INTERFACE ${WW3D2_SRC})
 
 # GeneralsX @build fbraz 11/02/2026 BenderAI - Enable FreeType text rendering on Linux/macOS/iOS
+# GeneralsX @build FadiLabib 06/07/2026 Android also uses FreeType (no Win32 GDI); without
+# this it falls through to the undefined Create_GDI_Font/Store_GDI_Char/Free_GDI_Font stubs.
 target_compile_definitions(corei_ww3d2 INTERFACE
-    $<$<PLATFORM_ID:Linux,Darwin,iOS>:SAGE_USE_FREETYPE>
+    $<$<PLATFORM_ID:Linux,Darwin,iOS,Android>:SAGE_USE_FREETYPE>
 )
 
 if (MSVC AND NOT IS_VS6_BUILD)
@@ -269,6 +271,8 @@ target_link_libraries(corei_ww3d2 INTERFACE
     core_wwmath
     $<$<PLATFORM_ID:Linux>:Freetype::Freetype>
     $<$<PLATFORM_ID:Darwin,iOS>:Freetype::Freetype>
+    # GeneralsX @build FadiLabib 06/07/2026 Android FreeType comes from vcpkg (no fontconfig)
+    $<$<PLATFORM_ID:Android>:Freetype::Freetype>
     $<$<PLATFORM_ID:Linux>:Fontconfig::Fontconfig>
     $<$<PLATFORM_ID:Darwin>:Fontconfig::Fontconfig>
     $<$<PLATFORM_ID:Darwin>:Iconv::Iconv>
