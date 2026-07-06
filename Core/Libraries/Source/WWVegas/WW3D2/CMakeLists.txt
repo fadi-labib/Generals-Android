@@ -253,7 +253,9 @@ endif()
 if(UNIX)
     find_package(Freetype REQUIRED)
     # iOS resolves fonts from a bundled fonts/ dir (render2dsentence.cpp); fontconfig is Linux/macOS only
-    if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # GeneralsX @build FadiLabib 06/07/2026 Android also uses the bundled-font path (no
+    # system fontconfig, and vcpkg.json excludes it for android) — guard it like iOS.
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT ANDROID)
         # GeneralsX @build felipebraz 20/06/2025 fontconfig needed on macOS too (render2dsentence.cpp uses Locate_Font_FontConfig)
         find_package(Fontconfig REQUIRED)
         # GeneralsX @build felipebraz 24/02/2026 fontconfig static lib (vcpkg) links iconv; must be explicit on macOS
