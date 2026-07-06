@@ -102,7 +102,71 @@ These are the projects most people mean by "DXVK on Android." **All run x86/x86_
 
 ## 3. BCn/DXT texture format support matrix
 
-<!-- Owned by Task 3. Intentionally left as a heading. -->
+> Same status legend as §1 ([MERGED]/[WIP]/[CLAIM]/[NEG]).
+>
+> **Why this section exists:** the retail assets are DDS textures compressed as **BC1/BC2/BC3
+> (= DXT1/DXT3/DXT5)**. Our lane is dxvk-native translating D3D8 → the D3D8 texture layer needs
+> the matching `VK_FORMAT_BC{1,2,3}_*_BLOCK` with the **`SAMPLED_IMAGE`** feature bit on the
+> device — which the Vulkan spec ties to the single **`textureCompressionBC`** physical-device
+> feature (enable it and BC1–BC7 must all report `SAMPLED_IMAGE` + `BLIT_SRC` +
+> `SAMPLED_IMAGE_FILTER_LINEAR`). So the whole question collapses to: *does this GPU/driver set
+> `textureCompressionBC = true`?* If not, DXVK has no native path for those formats and we need a
+> mitigation (below). ([Vulkan spec: features](https://docs.vulkan.org/spec/latest/chapters/features.html);
+> [Vulkan spec: formats/mandatory](https://docs.vulkan.org/spec/latest/chapters/formats.html))
+
+**Key upstream fact that reframes everything:** BCn is a *desktop* format, but **Adreno hardware
+has silently supported BCn/S3TC for years** — Qualcomm just didn't *expose* it in the proprietary
+driver until the **Snapdragon 865 / Adreno 650 era** (speculated to track BCn patent expiry). This
+is exactly why Android emulators bundle either Turnip or a driver patch to unlock it.
+([Esper: Android Dessert Bites 14 — GPU driver updates](https://www.esper.io/blog/android-dessert-bites-14-gpu-driver-updates-3819534))
+
+### 3.1 Support matrix (BC1/BC2/BC3 = DXT1/DXT3/DXT5, sampled)
+
+| GPU / driver | BC1 | BC2 | BC3 | Status | Source |
+|---|---|---|---|---|---|
+| **Adreno 7xx (stock Qualcomm)** | ✅ | ✅ | ✅ | **[CLAIM]** (post-865 era → BC exposed; gpuinfo-verifiable per-SKU) | HW supports BCn, Qualcomm exposes it since SD865/Adreno 650, all 7xx are newer ([Esper](https://www.esper.io/blog/android-dessert-bites-14-gpu-driver-updates-3819534)); coverage query: [gpuinfo BC1_RGBA / Android](https://vulkan.gpuinfo.org/listdevicescoverage.php?platform=android&format=VK_FORMAT_BC1_RGBA_UNORM_BLOCK) |
+| **Adreno 6xx (stock Qualcomm)** | ⚠️ | ⚠️ | ⚠️ | **[CLAIM]** — **split**: Adreno **650+ (SD865+): yes**; older **6xx (630/640, SD855-era): no** | BCn exposure gated at SD865/Adreno 650 ([Esper](https://www.esper.io/blog/android-dessert-bites-14-gpu-driver-updates-3819534)); stock vs Turnip reports enumerated in [cpu-gpu-arch/Adreno-600 refs](https://raw.githubusercontent.com/azhirnov/cpu-gpu-arch/main/gpu/Adreno-600.md) → [gpuinfo Adreno 660](https://vulkan.gpuinfo.org/listreports.php?devicename=Adreno%20(TM)%20660) |
+| **Adreno 6xx/7xx (Turnip / Mesa)** | ✅ | ✅ | ✅ | **[MERGED]** — verified in Mesa `main` source | Turnip sets `features->textureCompressionBC = !pdevice->info->props.is_a702;` — **true on every Adreno except the low-end a702**, and even a702 only lacks BC6H/BC7 (`/* no BC6H & BC7 support on A702 */`), so **BC1/BC2/BC3 are covered on 100% of Turnip-supported Adreno**. ([tu_device.cc L444-447, mesa/main](https://gitlab.freedesktop.org/mesa/mesa/-/raw/main/src/freedreno/vulkan/tu_device.cc)) |
+| **Mali G7x / Immortalis (stock ARM)** | ❌ | ❌ | ❌ | **[MERGED]** (negative) — **no BCn hardware, no Turnip fallback** | ARM GPUs support only **ETC/ETC2/ASTC + AFBC/AFRC**; ARM docs never list BC/DXT. ([Arm GPU Best Practices — textures](https://developer.arm.com/mobile-graphics-and-gaming/vulkan-api-best-practices-on-arm-gpus); [ARM Mali ASTC](https://arm-software.github.io/vulkan-sdk/_a_s_t_c.html)) Turnip is Adreno-only (§2.1). |
+| **Samsung Xclipse 920/940 (RDNA2/3, stock)** | ⚠️ | ⚠️ | ⚠️ | **[CLAIM]** — RDNA HW has native BCn; **BC1–BC3 native where the Samsung driver exposes it**, field data thin/buggy | RDNA is a desktop arch with native BCn; the ExynosTools layer notes "**BC1–BC3 can remain native where supported by the driver**" and only virtualizes BC4/5/6H/7. Treat as high-risk/verify-on-device. ([WearyConcern1165/ExynosTools](https://github.com/WearyConcern1165/ExynosTools); §2.3 Xclipse row) |
+| **Actual device (ground truth)** | — | — | — | **pending (no device connected)** | `adb devices` empty this session — see §3.4 for the exact capture commands |
+
+Legend: ✅ native `textureCompressionBC`/`SAMPLED_IMAGE` support · ⚠️ conditional/driver-dependent (verify per-SKU on gpuinfo or on-device) · ❌ not supported natively (needs a §3.2 mitigation).
+
+**Bottom line of the matrix:** exactly **one route gives BC1/2/3 unconditionally: Adreno + Turnip**
+(the same adrenotools-bundled path §2.2 already establishes). Stock Adreno is fine on **SD865/Adreno
+650 and newer** and needs a mitigation on older 6xx. **Mali is a hard "no"** (no HW, no Turnip) and
+is the only route that *requires* an asset- or app-side mitigation. **Xclipse is a "probably-yes,
+verify"** for BC1–3.
+
+### 3.2 Mitigations for the "no" / "conditional" cells
+
+| Cell needing help | Mitigation | Cost / caveat | Status | Source |
+|---|---|---|---|---|
+| Older stock Adreno 6xx (BC hidden) | **Ship Turnip** (native BC, §3.1 row 3) — or **BCeNabler / adrenotools** force-exposes BCn on the *stock* Qualcomm driver, rootless | Turnip = the path we already plan (§2.2); BCeNabler is Adreno-only and Android 9+ | **[MERGED]** | [bylaws/libadrenotools](https://github.com/bylaws/libadrenotools) ("enabling BCn textures"); [Esper](https://www.esper.io/blog/android-dessert-bites-14-gpu-driver-updates-3819534) |
+| Samsung Xclipse (BC4–7 gaps; BC1–3 driver-dependent) | **ExynosTools** compat layer — reports/virtualizes missing BC formats via CPU/compute, keeps BC1–3 native where possible | Non-mainline community layer; BC1–3 (what we need) usually native, so may be unnecessary | **[WIP]** | [WearyConcern1165/ExynosTools](https://github.com/WearyConcern1165/ExynosTools) |
+| **Mali (no BCn at all)** | Only real options: **(a) offline transcode** the DDS assets DXT→**ASTC/ETC2** + a texture-interception shim so DXVK's D3D8 path is fed a Mali-native format, **or (b) a runtime CPU/compute BCn→RGBA8 decode** in the upload path. **DXVK has no built-in software BCn decode** — it advertises the native `VkFormat` and the format is simply absent if `textureCompressionBC` is false. | (a) needs a build pipeline + a format-remap layer and re-QA of every texture; (b) burns CPU/compute at load and inflates memory (see §3.3). **No off-the-shelf drop-in exists for our native-ELF lane.** | **[NEG]** (no ready-made path) | DXVK relies on native VkFormats (§1); no BCn-decode option surfaced in the DXVK tree |
+| Any (last resort, all GPUs) | **Ship decompressed RGBA8** | See §3.3 — **infeasible on mobile** (4–8× size blow-up) | **[NEG]** | size math below |
+
+### 3.3 Asset-side transcode cost (why "just decompress to RGBA8" is a non-starter)
+
+- **Bit budget:** BC1 = **4 bpp**, BC2/BC3 = **8 bpp**, vs uncompressed **RGBA8 = 32 bpp**. Decompressing to RGBA8 is therefore a **8× blow-up from BC1** and **4× from BC2/BC3**.
+- **Scale:** the game ships **thousands of DDS textures** across its `.big` archives, **~2.7 GB of total assets**. (These are user-supplied retail assets — **none are checked into this repo**: `find -iname '*.dds'` / `*.big` returns 0, as expected.) A wholesale RGBA8 expansion pushes the texture working set from GB-scale toward **tens of GB** of storage and blows past mobile RAM/VRAM budgets — a non-starter for install size and runtime memory alike.
+- **The sane non-BC mitigation is a lateral transcode**, DXT → **ASTC or ETC2** (both are also ~4–8 bpp block formats, so **no size blow-up**) — but that is an **offline build-pipeline** change plus a **texture-remap shim** feeding DXVK's D3D8 path a Mali-native format, and it re-opens quality/QA on every texture. Sizing and go/no-go for the Mali route belong to **Task 4**.
+
+### 3.4 Device ground-truth capture (run when a device is attached)
+
+No device was connected during this research (`adb devices` returned an empty list). When one is attached, capture the ground-truth row with the brief's commands:
+
+```bash
+adb shell getprop ro.product.model ro.soc.model
+adb shell cmd gpu vkjson > /tmp/vkjson.txt 2>/dev/null || true
+grep -iE 'BC1|BC2|BC3|textureCompressionBC' /tmp/vkjson.txt
+```
+
+Record `textureCompressionBC` (feature) and the `VK_FORMAT_BC{1,2,3}_*_BLOCK` `optimalTilingFeatures` (look for `SAMPLED_IMAGE`) as the ground-truth row, noting whether the reading is from the **stock** driver or a **bundled Turnip** build.
+
+
 
 ## 4. SDL3 on Android + precedent ports
 
