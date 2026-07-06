@@ -48,6 +48,10 @@
 #elif defined(__ANDROID__)
 // GeneralsX @build FadiLabib 06/07/2026 Android bootstrap needs cerrno for strerror(errno) in chdir() diagnostics.
 #include <cerrno>
+// GeneralsX @feature FadiLabib 06/07/2026 stderr/stdout -> logcat pump (see main()).
+#include <android/log.h>
+#include <pthread.h>
+#include <cstdint>
 #endif
 #endif
 #include <cstdlib>
@@ -107,6 +111,88 @@ const Char *g_strFile = "data/Generals.str";     ///< STR file path
 
 // Extern declarations (from GameMain.cpp)
 extern Int GameMain();
+
+#if defined(__ANDROID__)
+// GeneralsX @feature FadiLabib 06/07/2026
+// On Android an app's stdout/stderr are discarded by the runtime — SDL does NOT
+// route them to logcat. The engine's completion marker ("GameMain() returned
+// with code N", stderr) and the headless replay progress ("Simulating Replay",
+// "Elapsed/Game Time", "Simulation of all replays completed", stdout) would all
+// vanish, leaving on-device runs (headless replay harness now, renderer
+// bring-up later) blind. This pump reads the write end of a pipe that stdout and
+// stderr are dup2'd onto and forwards each line to __android_log_write under a
+// stable tag, so `adb logcat -s GeneralsX` shows the full engine output.
+static void *gxLogcatPump(void *arg)
+{
+	const int readFd = (int)(intptr_t)arg;
+	char line[1024];
+	size_t len = 0;
+	char chunk[512];
+	ssize_t n;
+	while ((n = read(readFd, chunk, sizeof(chunk))) > 0) {
+		for (ssize_t i = 0; i < n; ++i) {
+			const char c = chunk[i];
+			if (c == '\n' || len == sizeof(line) - 1) {
+				line[len] = '\0';
+				__android_log_write(ANDROID_LOG_INFO, "GeneralsX", line);
+				len = 0;
+				if (c != '\n') {
+					line[len++] = c;  // carry the char that overflowed the buffer
+				}
+			} else {
+				line[len++] = c;
+			}
+		}
+	}
+	if (len > 0) {
+		line[len] = '\0';
+		__android_log_write(ANDROID_LOG_INFO, "GeneralsX", line);
+	}
+	return nullptr;
+}
+
+// GeneralsX @feature FadiLabib 06/07/2026 Redirect stdout+stderr to logcat.
+// Must run before any fprintf/printf in main() so the bootstrap diagnostics are
+// captured too. Idempotent-safe: called once from main().
+static void gxRedirectStdioToLogcat()
+{
+	int pipeFd[2];
+	if (pipe(pipeFd) != 0) {
+		return;  // best-effort; leave stdio as-is if the pipe can't be made
+	}
+
+	// GeneralsX @bugfix FadiLabib 06/07/2026 Fail-safe redirect.
+	// If the pump thread never starts (or a dup2 fails), nothing drains the read
+	// end while stdout/stderr point at the write end — the 64KB pipe fills and the
+	// FIRST printf/fprintf past that blocks forever, hanging the whole engine.
+	// Save the real stdout/stderr first so we can undo the redirect and fall back
+	// to (Android-dropped, but non-blocking) default stdio on any failure.
+	const int savedStdout = dup(STDOUT_FILENO);
+	const int savedStderr = dup(STDERR_FILENO);
+
+	// stdout line-buffered, stderr unbuffered so a crash still flushes its tail.
+	setvbuf(stdout, nullptr, _IOLBF, 0);
+	setvbuf(stderr, nullptr, _IONBF, 0);
+
+	bool ok = (dup2(pipeFd[1], STDOUT_FILENO) != -1)
+	       && (dup2(pipeFd[1], STDERR_FILENO) != -1);
+
+	pthread_t pumpThread;
+	if (ok && pthread_create(&pumpThread, nullptr, gxLogcatPump, (void *)(intptr_t)pipeFd[0]) == 0) {
+		pthread_detach(pumpThread);
+		close(pipeFd[1]);            // pump owns the read end; writer fd stays live via dup2'd 1/2
+		if (savedStdout != -1) close(savedStdout);
+		if (savedStderr != -1) close(savedStderr);
+	} else {
+		// No drainer: restore the original fds so writes never block on a full pipe,
+		// then close both pipe ends. Logging silently reverts to default; engine runs.
+		if (savedStdout != -1) { dup2(savedStdout, STDOUT_FILENO); close(savedStdout); }
+		if (savedStderr != -1) { dup2(savedStderr, STDERR_FILENO); close(savedStderr); }
+		close(pipeFd[0]);
+		close(pipeFd[1]);
+	}
+}
+#endif // __ANDROID__
 
 /**
  * FilterSoftwareVulkanICDs
@@ -261,6 +347,11 @@ int main(int argc, char* argv[])
 	__argv = argv;
 
 #if defined(__ANDROID__)
+	// GeneralsX @feature FadiLabib 06/07/2026 Route stdout/stderr to logcat FIRST,
+	// before any diagnostic below, so the whole on-device run is visible via
+	// `adb logcat -s GeneralsX` (Android otherwise discards app stdio).
+	gxRedirectStdioToLogcat();
+
 	// GeneralsX @feature FadiLabib 06/07/2026 Android bootstrap.
 	// The engine resolves ALL game data relative to the working directory
 	// (see StdLocalFileSystem); assets are pushed to /sdcard/GeneralsZH by
@@ -642,6 +733,22 @@ int main(int argc, char* argv[])
 	TheDebugLogCriticalSection = nullptr;
 
 	fprintf(stderr, "\nExiting with code %d\n", exitcode);
+
+#if defined(__ANDROID__)
+	// GeneralsX @feature FadiLabib 06/07/2026 Robust completion signal for the
+	// headless-replay harness: logcat can be racy to poll (buffer wrap, tag
+	// filtering), so also drop the final exit code into a file the harness reads
+	// back with a single `adb shell cat`. Placed here (after the try/catch) so it
+	// captures the exception path too. Written next to the assets, which the
+	// process already chdir'd into and can write (legacy external storage).
+	{
+		FILE *rc = fopen("/sdcard/GeneralsZH/last-run-exitcode.txt", "w");
+		if (rc != nullptr) {
+			fprintf(rc, "%d\n", exitcode);
+			fclose(rc);
+		}
+	}
+#endif
 
 	// GeneralsX @bugfix BenderAI 25/02/2026 — use _exit() to skip C++ global destructors.
 	// On macOS, __cxa_finalize_ranges runs ObjectPoolClass<X,256> global dtors after main() returns.

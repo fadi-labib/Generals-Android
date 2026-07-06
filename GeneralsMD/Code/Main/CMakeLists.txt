@@ -4,6 +4,9 @@
 if(ANDROID)
     add_library(z_generals SHARED)
     set_target_properties(z_generals PROPERTIES OUTPUT_NAME "main")
+    # GeneralsX @build FadiLabib 06/07/2026 SDL3Main.cpp routes engine stdout/stderr
+    # to logcat via __android_log_write; link the NDK log library for it.
+    target_link_libraries(z_generals PRIVATE log)
 else()
 add_executable(z_generals WIN32)
 
