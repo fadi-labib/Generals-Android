@@ -3,7 +3,7 @@
 **File:** `Dependencies/Utility/Utility/endian_compat.h`
 **Found:** 2026-07-06, during the Android-port codebase read-through
 **Severity:** Latent — no effect on any current target (all little-endian); wrong on big-endian hosts
-**Status:** Documented, not yet fixed (fix is mechanical; should also go upstream to TheSuperHackers)
+**Status:** Fixed in-tree (see commit); offer upstream to TheSuperHackers
 
 ## The defect
 
