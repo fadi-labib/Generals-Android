@@ -127,16 +127,21 @@ Device on this desk: Galaxy Tab S7+ (`adb devices` → `R52NC03AXPW`, SM-T970).
   app's uid with tracks not in standby. OpenAL backend list shows in logcat tag
   `openal` ("Supported backends: opensl, null, wave" — opensl must be chosen).
 - **Two devices in DXVK logs** = count `grep -c "Device properties:"`. Two is
-  currently NORMAL at boot (doomed D32 device + surviving D16 device). Three+ means
-  something new is wrong. ⚠️ **The surviving device is NOT just a fallback — it is
-  load-bearing.** A 2026-07-07 attempt to collapse to one device (default D24S8 /
-  32-bit color) mechanically worked (Device properties → 1, D24S8 depth) but
-  **rendered the 3D shell map solid BLACK**; an isolation build proved the
-  **16-bit-COLOR** back buffer is the only config that draws the shell map on this
-  Turnip/Adreno-650 path (32-bit color → black). So the "wasteful" retry is
-  currently the thing that lands on the working color format. Fixing this is a real
-  DXVK/Turnip color-format investigation, not a depth-default one-liner
-  (see `task-p3-8-report.md` for the isolation evidence). Do not naively remove it.
+  currently NORMAL at boot. Three+ means something new is wrong. ⚠️ **The two-device
+  boot is LOAD-BEARING — but not for the reason first thought.** A 2026-07-07 deep
+  investigation (`task-p3-10-report.md`) DISPROVED the earlier "16-bit color"
+  theory: the working baseline is already **32-bit X8R8G8B8 + D16 + A2B10G10R10
+  swapchain** (no R5G6B5 anywhere). The real cause: the 3D shell-map scene renders
+  BLACK whenever the surviving D3D device is the **only** device ever created on the
+  ANativeWindow. It renders correctly ONLY because a first "doomed" device is created
+  and torn down first — **that teardown primes something in Turnip** the real device
+  needs to present. Ruled out on-device as NON-fixes: D24X8 & D16 depth, FIFO present
+  mode (all still black single-device; ~1500 draw calls submitted but discarded). So
+  it is a **DXVK/Turnip device/swapchain-lifecycle** issue, independent of
+  depth/color/format/present-mode — an engine depth/format change can NEVER fix it.
+  Recommended future direction: instrument DXVK's presenter/swapchain to find what
+  the first device's teardown primes; test a DXVK "warm-up swapchain" as a
+  one-D3D-device workaround; and/or bump the bundled Turnip. Do not remove the retry.
 
 ## Traps that will bite you again if forgotten
 
@@ -162,15 +167,20 @@ Device on this desk: Galaxy Tab S7+ (`adb devices` → `R52NC03AXPW`, SM-T970).
    `SDL3GameEngine.cpp`) were tuned for iPhone/iPad; validate on the tablet in a
    real match (build a base, box-select, issue moves). The 8 px dead zone may be
    too small at 2800×1752.
-2. **Kill the doomed first device** (quality + boot time): ⚠️ **HARDER THAN IT
-   LOOKS — see the ⚠️ note in the Debugging toolbox above.** The obvious fix
-   (default `D3DFMT_D24S8` on non-Win32 so attempt-0 succeeds) was tried 2026-07-07
-   and renders the 3D shell map BLACK: on this Turnip/Adreno-650 path only the
-   **16-bit-color** back buffer (what the retry currently lands on) draws the shell
-   map. The real task is a DXVK/Turnip **color-format** investigation (why does a
-   32-bit-color swapchain present black while 16-bit works?), not the depth default.
-   Isolation evidence + two concrete leads in `task-p3-8-report.md`. Until that's
-   understood, the two-device boot must stay. **Parked, not quick.**
+2. **Kill the doomed first device** (quality + boot time): ⚠️ **ROOT-CAUSED, and it's
+   a DXVK/Turnip driver task — NOT an engine one.** Two 2026-07-07 investigations
+   (`task-p3-8-report.md`, then the decisive `task-p3-10-report.md`) established: the
+   surviving single device renders the 3D shell map BLACK regardless of depth (D24X8/
+   D16) or present mode (FIFO) — ~1500 draws submitted but discarded. The 3D scene
+   only appears because the FIRST device's creation+teardown **primes Turnip's
+   presenter/swapchain state**. This is a driver-lifecycle dependency, not a
+   depth/color/format issue (the earlier color theory was disproven — baseline is
+   already 32-bit X8R8G8B8). Concrete next moves: (a) instrument DXVK's
+   `presenter`/swapchain to identify what the doomed device's teardown initializes;
+   (b) prototype a DXVK "warm-up swapchain" (create+destroy an internal swapchain
+   once) so ONE D3D device suffices; (c) bump the bundled Turnip and re-test. Leave
+   the two-device retry in place until (a)–(c) yield a verified fix. **Parked with an
+   accurate root cause.**
 3. ~~**Boot-time log spam**~~ ✅ **DONE (`9455765a2`)**: the stderr→logcat pump now
    filters `[INI]`/`[SUBSYS]`/`[GX-ISSUE144]` by default (~85% quieter); set
    `GENERALSX_VERBOSE` for the firehose. Errors are never filtered.
