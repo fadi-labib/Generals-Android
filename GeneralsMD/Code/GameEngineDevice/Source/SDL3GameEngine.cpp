@@ -494,8 +494,15 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 				sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_UP, px, py, SDL_BUTTON_LEFT);
 				break;
 			case TouchState::PAN:
+				// GeneralsX @android FadiLabib 07/07/2026 - Release RMB at the last
+				// pan centroid, NOT the fixed anchor. SelectionXlat's isClick() (drag
+				// tolerance 0) treats an RMB down+up at the SAME pixel as a right-click,
+				// which in regular mouse mode calls deselectAll() — so ending a pace-
+				// controlled pan at the anchor deselected the whole army on every lift.
+				// The last centroid always differs from the anchor after a real pan, so
+				// isClick sees movement and the release reads as a drag-scroll end.
 				sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_UP,
-				                   s_touch.panX, s_touch.panY, SDL_BUTTON_RIGHT);
+				                   s_touch.panLastX, s_touch.panLastY, SDL_BUTTON_RIGHT);
 				break;
 			// TWO_PENDING / PINCH hold no buttons — nothing to release.
 			default:
