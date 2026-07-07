@@ -6,6 +6,43 @@ Vulkan 1.3 (Mesa Turnip + DXVK), SDL3, OpenAL, touch controls.
 
 ![In-game on a Galaxy Tab S7+](BUILD/screenshots/android-tab-s7plus-ingame.png)
 
+<div class="grid cards" markdown>
+
+-   :material-download:{ .lg .middle } **Play it**
+
+    ---
+
+    Grab the APK from Releases, push your own game files, play.
+
+    [:octicons-arrow-right-24: Releases](https://github.com/fadi-labib/Generals-Android/releases)
+
+-   :material-frequently-asked-questions:{ .lg .middle } **FAQ**
+
+    ---
+
+    Which devices work? Root? Legal? Direct answers.
+
+    [:octicons-arrow-right-24: FAQ](FAQ.md)
+
+-   :material-hammer-wrench:{ .lg .middle } **Build from source**
+
+    ---
+
+    Toolchain, rendering pipeline, debugging toolbox, traps.
+
+    [:octicons-arrow-right-24: Android build guide](BUILD/ANDROID.md)
+
+-   :material-gesture-tap:{ .lg .middle } **How it works**
+
+    ---
+
+    DXVK on Turnip, one-producer windows, touch→mouse translation.
+
+    [:octicons-arrow-right-24: Touch controls](port/TOUCH_CONTROLS.md) ·
+    [:octicons-arrow-right-24: Porting playbook](port/PORTING_PLAYBOOK.md)
+
+</div>
+
 ## The Android port (this project)
 
 | Doc | What it covers |

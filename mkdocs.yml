@@ -13,6 +13,9 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   custom_dir: overrides
+  icon:
+    logo: material/tank
+  favicon: assets/favicon.svg
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -26,19 +29,32 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+  # navigation.tabs: top-level sections as top tabs; the left sidebar then shows the
+  # current section as a proper indented, collapsible tree (navigation.sections made
+  # it look flat - "no actual navigation").
   features:
-    - navigation.sections
+    - navigation.tabs
     - navigation.top
+    - navigation.footer
     - search.suggest
     - content.code.copy
     - content.action.edit
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - toc:
       permalink: true
   - pymdownx.superfences
   - pymdownx.highlight
+  - pymdownx.tilde        # GitHub-style ~~strikethrough~~ (used in ANDROID.md)
+  - pymdownx.tasklist:    # GitHub-style - [ ] checkboxes
+      custom_checkbox: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - tables
 
 # Internal working docs stay in the repo but off the public site.
