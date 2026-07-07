@@ -68,6 +68,9 @@ exclude_docs: |
 nav:
   - Home: index.md
   - FAQ: FAQ.md
+  - The Journey:
+      - The Android journey: journey/ANDROID_JOURNEY.md
+      - Bugs & lessons: journey/BUGS_AND_LESSONS.md
   - Play:
       - Get the game files (upstream): HOWTO/GETTING_THE_GAME_FILES.md
       - Installation (upstream): HOWTO/INSTALLATION.md

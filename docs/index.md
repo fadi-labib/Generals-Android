@@ -32,14 +32,14 @@ Vulkan 1.3 (Mesa Turnip + DXVK), SDL3, OpenAL, touch controls.
 
     [:octicons-arrow-right-24: Android build guide](BUILD/ANDROID.md)
 
--   :material-gesture-tap:{ .lg .middle } **How it works**
+-   :material-map-marker-path:{ .lg .middle } **The journey**
 
     ---
 
-    DXVK on Turnip, one-producer windows, touch→mouse translation.
+    The under-24-hour port story — walls, 2 am root causes, lessons.
 
-    [:octicons-arrow-right-24: Touch controls](port/TOUCH_CONTROLS.md) ·
-    [:octicons-arrow-right-24: Porting playbook](port/PORTING_PLAYBOOK.md)
+    [:octicons-arrow-right-24: The Android journey](journey/ANDROID_JOURNEY.md) ·
+    [:octicons-arrow-right-24: Bugs & lessons](journey/BUGS_AND_LESSONS.md)
 
 </div>
 
@@ -47,6 +47,9 @@ Vulkan 1.3 (Mesa Turnip + DXVK), SDL3, OpenAL, touch controls.
 
 | Doc | What it covers |
 |-----|----------------|
+| [The Android journey](journey/ANDROID_JOURNEY.md) | The whole story: the renderer night, the black screen, the touch deep-dive, shipping day |
+| [Bugs & lessons](journey/BUGS_AND_LESSONS.md) | All 17 defects found (symptom → root cause → fix → upstream status) + 11 transferable lessons |
+| [Touch controls](port/TOUCH_CONTROLS.md) | The gesture system (shared with iOS): state machine, ten design decisions, debugging map |
 | [ANDROID.md](BUILD/ANDROID.md) | **The complete guide**: build from source, rendering pipeline, debugging toolbox, traps, known issues, regression checklist |
 | [Renderer research](https://github.com/fadi-labib/Generals-Android/blob/main/docs/WORKDIR/planning/ANDROID_RENDERER_RESEARCH_2026-07.md) | Phase 0: how the Turnip-via-adrenotools route was chosen |
 | [Port findings](https://github.com/fadi-labib/Generals-Android/blob/main/docs/WORKDIR/planning/ANDROID_PORT_FINDINGS_2026-07-06.md) | Codebase audit that shaped the plan |
@@ -58,7 +61,6 @@ Vulkan 1.3 (Mesa Turnip + DXVK), SDL3, OpenAL, touch controls.
 |-----|----------------|
 | [PORTING_PLAYBOOK.md](port/PORTING_PLAYBOOK.md) | Complete engineering log of the iOS port this one descends from |
 | [PORTING_PATTERNS.md](port/PORTING_PATTERNS.md) | Generalized methodology for porting classic Windows games |
-| [TOUCH_CONTROLS.md](port/TOUCH_CONTROLS.md) | The touch control system (iOS + Android): gestures, state machine, design rationale |
 | [Getting the game files](HOWTO/GETTING_THE_GAME_FILES.md) | Obtaining your own copy of the game assets |
 | [Known issues](KNOWN_ISSUES/README.md) · [Command-line parameters](ETC/COMMAND_LINE_PARAMETERS.md) | Engine-wide references |
 

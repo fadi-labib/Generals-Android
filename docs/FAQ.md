@@ -68,6 +68,15 @@ Untested. The GameSpy-era networking code compiles but online play hasn't been
 attempted on Android. Skirmish vs AI is the tested mode; campaign and Generals
 Challenge are [being verified](https://github.com/fadi-labib/Generals-Android/issues/12).
 
+## How was this ported in under 24 hours?
+
+By standing on documented shoulders: the iOS/iPadOS parent port had already solved
+the DirectX-on-mobile renderer chain, the touch translation, and the app lifecycle —
+and written it all down. Android's own walls (a Vulkan 1.1 driver, a one-producer
+window rule, a dirty allocator unmasking 2003-era bugs) are told in
+[The Android Journey](journey/ANDROID_JOURNEY.md), and every defect found is cataloged
+in [Bugs & Lessons](journey/BUGS_AND_LESSONS.md).
+
 ## Can I play this on iPhone, iPad, or Mac?
 
 Yes — via the parent project this port descends from:

@@ -63,10 +63,14 @@ Vulkan 1.3 on a Vulkan 1.1 device (bundle Turnip, load it rootlessly), one Vulka
 loader instead of two (SDL and DXVK each bring their own), the one-producer
 `ANativeWindow` rule (the engine's device-retry loop leaked it → black screen), shared
 libc++ across `.so` boundaries (or C++ exceptions vanish), and a zero-initialized heap
-(the 2003 code silently assumes it). The full story, including the bugs that flowed
-back upstream: [rendering pipeline](https://fadi-labib.github.io/Generals-Android/BUILD/ANDROID/#rendering-pipeline-phase-3)
-· [touch controls](https://fadi-labib.github.io/Generals-Android/port/TOUCH_CONTROLS/)
-· [porting playbook](https://fadi-labib.github.io/Generals-Android/port/PORTING_PLAYBOOK/).
+(the 2003 code silently assumes it).
+
+**The full story** — the renderer night, the 2 am black-screen hunt, the touch
+deep-dive, and 17 cataloged bugs with root causes:
+**[The Android Journey](https://fadi-labib.github.io/Generals-Android/journey/ANDROID_JOURNEY/)**
+· **[Bugs & Lessons](https://fadi-labib.github.io/Generals-Android/journey/BUGS_AND_LESSONS/)**
+· [rendering pipeline](https://fadi-labib.github.io/Generals-Android/BUILD/ANDROID/#rendering-pipeline-phase-3)
+· [touch controls](https://fadi-labib.github.io/Generals-Android/port/TOUCH_CONTROLS/).
 
 ## Contributing
 
