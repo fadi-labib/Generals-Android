@@ -385,11 +385,25 @@ before baking the fix into code.)
 
 ## Known Issues & Remaining Work
 
+**Resolved during the 2026-07-07 session** (kept here so future readers know these were
+real and are fixed, not never-encountered):
+
+- ~~Black screen / `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR` loop~~ → deferred surface creation
+  (see [rendering pipeline](#rendering-pipeline-phase-3) point 3).
+- ~~Touch needed two taps per menu button~~ → the iOS touch→mouse gesture translator
+  (tap-select, drag-box, long-press right-click, two-finger pan, pinch zoom) is now enabled
+  on Android (`GX_TOUCH_UI` in `SDL3GameEngine.cpp`); a real finger activates in one tap.
+  (`adb shell input tap` still needs two — its 0 ms down-up delivers hover+click in one
+  frame; use `input swipe x y x y 150` to emulate a real tap.)
+- ~~Silent audio~~ → Android inherited the Linux desktop `ALSOFT_DRIVERS=pulse,alsa,...`
+  workaround (`__ANDROID__` also defines `__linux__`), forcing OpenAL to the null backend.
+  Android now keeps default selection and picks OpenSL ES; audio_flinger shows live tracks.
+- ~~`D3DRS_PATCHSEGMENTS` warn flood~~ (~72k lines / 12 min) → N-patches are Windows-only.
+- Basic lifecycle: home → resume survives with the same process and rendering intact (the
+  iOS background render-pause now also guards Android).
+
 **Known issues (2026-07-07):**
 
-- **Touch UI double-tap**: the first tap on a menu button highlights (hover), the second
-  activates. The iOS gesture translator (tap-select, drag-box, long-press right-click,
-  two-finger pan, pinch zoom) is compiled in via SDL3 but needs on-device tuning for Android.
 - **`MISSING: 'GUI:CustomMission'`** label in the Solo Play menu — upstream localization gap,
   cosmetic.
 - **16-bit depth buffer**: the surviving device is created with `D3DFMT_D16` (the engine's
@@ -397,18 +411,14 @@ before baking the fix into code.)
   is rejected). Possible z-fighting on large maps; a future fix is defaulting to `D24S8` on
   Android.
 - **Log spam**: the engine's `[INI]`/`[SUBSYS]`/`[GX-ISSUE144]` debug traces flood logcat
-  during boot. (The worst per-frame DXVK spam, `D3DRS_PATCHSEGMENTS`, is fixed — N-patches
-  are now Windows-only in `shader.cpp`.)
-- **Audio**: OpenAL initializes without errors, but audio output has not been verified by ear
-  on-device yet.
+  during boot.
+- **Audio quality/mix** verified only as "tracks are playing" (audio_flinger); not yet
+  listened to by a human.
 
 **Remaining work (Phase 4 candidates):**
 
-- Touch control tuning (single-tap activation, RTS gestures) — port the iOS translator
-  behaviors properly.
-- Activity lifecycle: pause/resume, surface loss on app switch, foreground service or
-  save-on-pause.
-- Audio verification and mixer tuning.
+- Touch gesture tuning under real gameplay (drag-box vs pan feel, long-press timing).
+- Deeper lifecycle: rotation, split-screen, low-memory kills, save-on-pause.
 - Performance: FPS currently ~30-60 at native 2800×1752; consider render-scale option.
 - Non-Adreno devices: Xclipse 920 (Galaxy S22) has no BCn texture support and no Turnip —
   needs an asset-transcode fallback (documented in the Phase 0 research).

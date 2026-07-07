@@ -135,9 +135,10 @@ cmake --build build/android-vulkan --target z_generals -j$(nproc --ignore=1)
 ./scripts/build/android/push-assets-android.sh  # your own game files → /sdcard/GeneralsZH
 ```
 
-Status: menus, shell map, and live skirmish matches render and play. Touch needs
-polish (menu buttons currently take two taps), audio is unverified, and non-Adreno
-GPUs (e.g. Samsung Xclipse) aren't supported yet — the honest list lives in
+Status: menus, shell map, and live skirmish matches render and play, with the same
+touch gestures as iOS (tap-select, drag-box, long-press right-click, two-finger
+pan, pinch zoom) and OpenSL ES audio. Non-Adreno GPUs (e.g. Samsung Xclipse)
+aren't supported yet — the honest list lives in
 [Known issues & remaining work](docs/BUILD/ANDROID.md#known-issues--remaining-work).
 
 ## Where things are
