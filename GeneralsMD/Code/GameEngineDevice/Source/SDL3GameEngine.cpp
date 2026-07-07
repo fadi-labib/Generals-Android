@@ -170,16 +170,35 @@ struct TouchState {
 	float twoCx0 = 0.0f, twoCy0 = 0.0f; // centroid at second-finger down (px)
 	float twoDist0 = 0.0f;              // finger distance at second-finger down (px)
 	Uint64 downTicks = 0;
+	Uint64 lastTapTicks = 0;               // commit time of the previous clean tap
+	float lastTapX = 0.0f, lastTapY = 0.0f; // position of the previous clean tap
+	float panLastX = 0.0f, panLastY = 0.0f;   // previous pan centroid (per-event delta)
+	float panAccumX = 0.0f, panAccumY = 0.0f; // finger delta accrued since last frame flush
 	float f1x = 0.0f, f1y = 0.0f, f2x = 0.0f, f2y = 0.0f; // normalized per finger
 };
 
 TouchState s_touch;
 
 const Uint64 LONG_PRESS_MS = 600;
+// GeneralsX @android FadiLabib 07/07/2026 - Touch double-tap -> double-click. A
+// tap landing within this window AND near the previous tap emits clicks=2 on the
+// button event, so the engine's double-click path fires (e.g. double-click a unit
+// to select every same-type unit on screen). Matches SDL's default 500 ms
+// multi-click window; the position slop reuses the gesture threshold.
+const Uint64 DOUBLE_TAP_MS = 500;
 // GeneralsX @android FadiLabib 07/07/2026 - 3% per tick (was 6%): with the
 // pan/pinch mode lock below, zoom no longer fights camera pan, and the finer
 // step doubles the wheel-tick rate for a smoother zoom feel.
 const float PINCH_STEP_RATIO = 0.03f;  // 3% distance change per wheel tick
+
+// GeneralsX @android FadiLabib 07/07/2026 - Two-finger pan speed. The engine's
+// RMB scroll is a velocity joystick (scroll speed grows with cursor distance from
+// the anchor, integrated every frame), so a full-screen finger swipe pins it at
+// max speed and it keeps scrolling while the fingers stay displaced. We instead
+// feed it only THIS frame's finger delta as the offset, so it behaves like a 1:1
+// drag: the camera moves with the fingers and stops when they stop. PAN_GAIN
+// scales that delta — 1.0 tracks the fingers; lower = slower camera.
+const float PAN_GAIN = 1.0f;
 
 // GeneralsX @android FadiLabib 07/07/2026 - Gesture thresholds in PHYSICAL size,
 // not pixels. The old fixed 8 px is ~0.7 mm on a Tab S7+ (2800x1752 @ ~274 ppi):
@@ -210,7 +229,8 @@ float gestureThresholdPx(SDL_Window *window)
 }
 
 void sendSyntheticMouse(SDL3Mouse *mouse, SDL_Window *window, Uint32 type,
-                        float x, float y, Uint8 button = 0, float wheelY = 0.0f)
+                        float x, float y, Uint8 button = 0, float wheelY = 0.0f,
+                        Uint8 clicks = 1)
 {
 	// The windowID must be valid: SDL3Mouse::scaleMouseCoordinates() looks the
 	// window up by id to map window points into the game's internal resolution,
@@ -231,7 +251,7 @@ void sendSyntheticMouse(SDL3Mouse *mouse, SDL_Window *window, Uint32 type,
 			ev.button.windowID = windowID;
 			ev.button.button = button;
 			ev.button.down = (type == SDL_EVENT_MOUSE_BUTTON_DOWN);
-			ev.button.clicks = 1;
+			ev.button.clicks = clicks;
 			ev.button.x = x;
 			ev.button.y = y;
 			break;
@@ -267,8 +287,14 @@ void beginTwoPending(int winW, int winH)
 
 void beginPan(SDL3Mouse *mouse, SDL_Window *window, int winW, int winH)
 {
+	// panX/panY is the FIXED scroll anchor (matches the engine's RMB-down anchor);
+	// panLast tracks the rolling centroid, panAccum the delta flushed each frame.
 	s_touch.panX = (s_touch.f1x + s_touch.f2x) * 0.5f * (float)winW;
 	s_touch.panY = (s_touch.f1y + s_touch.f2y) * 0.5f * (float)winH;
+	s_touch.panLastX = s_touch.panX;
+	s_touch.panLastY = s_touch.panY;
+	s_touch.panAccumX = 0.0f;
+	s_touch.panAccumY = 0.0f;
 	sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, s_touch.panX, s_touch.panY);
 	sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_DOWN,
 	                   s_touch.panX, s_touch.panY, SDL_BUTTON_RIGHT);
@@ -383,11 +409,15 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 			}
 		}
 		else if (s_touch.phase == TouchState::PAN) {
+			// Accumulate finger travel; the actual motion (anchor + delta) is emitted
+			// once per engine frame in updateTouchLongPress so the scroll speed is
+			// independent of the touch sampling rate.
 			const float cx = (s_touch.f1x + s_touch.f2x) * 0.5f * (float)winW;
 			const float cy = (s_touch.f1y + s_touch.f2y) * 0.5f * (float)winH;
-			sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, cx, cy);
-			s_touch.panX = cx;
-			s_touch.panY = cy;
+			s_touch.panAccumX += cx - s_touch.panLastX;
+			s_touch.panAccumY += cy - s_touch.panLastY;
+			s_touch.panLastX = cx;
+			s_touch.panLastY = cy;
 		}
 		else if (s_touch.phase == TouchState::PINCH) {
 			const float cx = (s_touch.f1x + s_touch.f2x) * 0.5f * (float)winW;
@@ -427,12 +457,29 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 				if (event.type == SDL_EVENT_FINGER_CANCELED) {
 					break;
 				}
-				// Clean tap: deliver the full click at the exact press position.
-				sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, s_touch.downX, s_touch.downY);
-				sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_DOWN,
-				                   s_touch.downX, s_touch.downY, SDL_BUTTON_LEFT);
-				sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_UP,
-				                   s_touch.downX, s_touch.downY, SDL_BUTTON_LEFT);
+				// Clean tap: deliver the full click at the exact press position. A
+				// second tap within DOUBLE_TAP_MS and near the first carries clicks=2
+				// so the engine sees a double-click (select-all-same-type units).
+				{
+					const Uint64 now = SDL_GetTicks();
+					const float slop = gestureThresholdPx(window) * 2.0f;
+					const bool dbl =
+						s_touch.lastTapTicks != 0 &&
+						(now - s_touch.lastTapTicks) <= DOUBLE_TAP_MS &&
+						SDL_fabsf(s_touch.downX - s_touch.lastTapX) <= slop &&
+						SDL_fabsf(s_touch.downY - s_touch.lastTapY) <= slop;
+					const Uint8 clicks = dbl ? 2 : 1;
+					sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, s_touch.downX, s_touch.downY);
+					sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_DOWN,
+					                   s_touch.downX, s_touch.downY, SDL_BUTTON_LEFT, 0.0f, clicks);
+					sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_UP,
+					                   s_touch.downX, s_touch.downY, SDL_BUTTON_LEFT, 0.0f, clicks);
+					// Reset after a double so a triple-tap doesn't chain; otherwise
+					// anchor this tap for the next one.
+					s_touch.lastTapTicks = dbl ? 0 : now;
+					s_touch.lastTapX = s_touch.downX;
+					s_touch.lastTapY = s_touch.downY;
+				}
 				break;
 			case TouchState::DRAGGING:
 				sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_UP, px, py, SDL_BUTTON_LEFT);
@@ -464,6 +511,18 @@ void updateTouchLongPress(SDL3Mouse *mouse, SDL_Window *window)
 		sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_UP,
 		                   s_touch.downX, s_touch.downY, SDL_BUTTON_RIGHT);
 		s_touch.phase = TouchState::LONGPRESSED;
+	}
+
+	// Flush one frame's worth of pan travel as an RMB-scroll offset from the fixed
+	// anchor, then clear it. Sending anchor+delta (delta==0 when the fingers are
+	// still) makes the engine's velocity-joystick scroll behave like a 1:1 drag and
+	// stop the instant the fingers stop.
+	if (s_touch.phase == TouchState::PAN) {
+		sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION,
+		                   s_touch.panX + s_touch.panAccumX * PAN_GAIN,
+		                   s_touch.panY + s_touch.panAccumY * PAN_GAIN);
+		s_touch.panAccumX = 0.0f;
+		s_touch.panAccumY = 0.0f;
 	}
 }
 
