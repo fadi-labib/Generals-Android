@@ -105,8 +105,11 @@ Device on this desk: Galaxy Tab S7+ (`adb devices` → `R52NC03AXPW`, SM-T970).
 ## Debugging toolbox (earned the hard way)
 
 - **Game log lines** all come out under logcat tag `GeneralsX` (stdio is redirected).
-  DXVK's own `info:`/`warn:`/`err:` lines are inside that tag too. Useful filter:
-  `adb logcat -d | grep GeneralsX | grep -vE "\[INI\]|SUBSYS|GX-ISSUE144"`.
+  DXVK's own `info:`/`warn:`/`err:` lines are inside that tag too. As of `9455765a2`
+  the pump **filters `[INI]`/`[SUBSYS]`/`[GX-ISSUE144]` boot spam by default**
+  (~85% quieter, ~4400 lines → 0). To get the full firehose back, launch with the
+  `GENERALSX_VERBOSE` env set (read once at pump start in `SDL3Main.cpp`).
+  `err:`/`warn:`/`ERROR`/`FATAL` lines are never filtered.
 - **Boot health check** (after ~40 s):
   `adb logcat -d | grep -cE "Actual swapchain properties"` → must be ≥1;
   `grep -c NATIVE_WINDOW_IN_USE` → must be 0; `grep -c "beginning of crash"` → 0.
@@ -124,8 +127,16 @@ Device on this desk: Galaxy Tab S7+ (`adb devices` → `R52NC03AXPW`, SM-T970).
   app's uid with tracks not in standby. OpenAL backend list shows in logcat tag
   `openal` ("Supported backends: opensl, null, wave" — opensl must be chosen).
 - **Two devices in DXVK logs** = count `grep -c "Device properties:"`. Two is
-  currently NORMAL at boot (doomed D32 device + surviving D16 device). One would be
-  ideal (see next steps). Three+ means something new is wrong.
+  currently NORMAL at boot (doomed D32 device + surviving D16 device). Three+ means
+  something new is wrong. ⚠️ **The surviving device is NOT just a fallback — it is
+  load-bearing.** A 2026-07-07 attempt to collapse to one device (default D24S8 /
+  32-bit color) mechanically worked (Device properties → 1, D24S8 depth) but
+  **rendered the 3D shell map solid BLACK**; an isolation build proved the
+  **16-bit-COLOR** back buffer is the only config that draws the shell map on this
+  Turnip/Adreno-650 path (32-bit color → black). So the "wasteful" retry is
+  currently the thing that lands on the working color format. Fixing this is a real
+  DXVK/Turnip color-format investigation, not a depth-default one-liner
+  (see `task-p3-8-report.md` for the isolation evidence). Do not naively remove it.
 
 ## Traps that will bite you again if forgotten
 
@@ -151,17 +162,18 @@ Device on this desk: Galaxy Tab S7+ (`adb devices` → `R52NC03AXPW`, SM-T970).
    `SDL3GameEngine.cpp`) were tuned for iPhone/iPad; validate on the tablet in a
    real match (build a base, box-select, issue moves). The 8 px dead zone may be
    too small at 2800×1752.
-2. **Kill the doomed first device** (quality + boot time): the engine requests
-   fullscreen `2800×1599` which matches no enumerated mode, so `Find_Z_Mode` fails
-   and `dx8wrapper.cpp:~1401` blindly defaults depth to `D3DFMT_D32` → rejected →
-   retry lands on 16-bit `D3DFMT_D16` (possible z-fighting). Fix ideas: default to
-   `D3DFMT_D24S8` on non-Win32 (Turnip supports it — DXVK logs the D16S8→D24S8
-   mapping), or fix the mode-matching for native panel sizes. Success = ONE
-   `Device properties:` block per boot and a D24S8 depth buffer.
-3. **Boot-time log spam**: `[INI]`/`[SUBSYS]`/`[GX-ISSUE144]` fprintf tracing
-   floods logcat for ~40 s per boot. iOS solved this with a filtered stderr sink in
-   `SDL3Main.cpp` (see the `TARGET_OS_IPHONE` diagnostic block) — Android could
-   reuse it or gate the traces behind an env var.
+2. **Kill the doomed first device** (quality + boot time): ⚠️ **HARDER THAN IT
+   LOOKS — see the ⚠️ note in the Debugging toolbox above.** The obvious fix
+   (default `D3DFMT_D24S8` on non-Win32 so attempt-0 succeeds) was tried 2026-07-07
+   and renders the 3D shell map BLACK: on this Turnip/Adreno-650 path only the
+   **16-bit-color** back buffer (what the retry currently lands on) draws the shell
+   map. The real task is a DXVK/Turnip **color-format** investigation (why does a
+   32-bit-color swapchain present black while 16-bit works?), not the depth default.
+   Isolation evidence + two concrete leads in `task-p3-8-report.md`. Until that's
+   understood, the two-device boot must stay. **Parked, not quick.**
+3. ~~**Boot-time log spam**~~ ✅ **DONE (`9455765a2`)**: the stderr→logcat pump now
+   filters `[INI]`/`[SUBSYS]`/`[GX-ISSUE144]` by default (~85% quieter); set
+   `GENERALSX_VERBOSE` for the firehose. Errors are never filtered.
 4. **Campaign / Generals Challenge / video playback** untested on Android. Video =
    FFmpeg path (from TheSuperHackers lineage); expect format/paths issues first.
 5. **Perf headroom**: currently ~30–60 FPS at native res. Options: render-scale
