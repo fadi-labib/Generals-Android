@@ -167,8 +167,9 @@ Device on this desk: Galaxy Tab S7+ (`adb devices` → `R52NC03AXPW`, SM-T970).
    `SDL3GameEngine.cpp`) were tuned for iPhone/iPad; validate on the tablet in a
    real match (build a base, box-select, issue moves). The 8 px dead zone may be
    too small at 2800×1752.
-2. **Kill the doomed first device** (quality + boot time): ⚠️ **ROOT-CAUSED, and it's
-   a DXVK/Turnip driver task — NOT an engine one.** Two 2026-07-07 investigations
+2. **Kill the doomed first device** (quality + boot time) — tracked in
+   [issue #8](https://github.com/fadi-labib/Generals-Android/issues/8). ⚠️ **ROOT-CAUSED,
+   and it's a DXVK/Turnip driver task — NOT an engine one.** Two 2026-07-07 investigations
    (`task-p3-8-report.md`, then the decisive `task-p3-10-report.md`) established: the
    surviving single device renders the 3D shell map BLACK regardless of depth (D24X8/
    D16) or present mode (FIFO) — ~1500 draws submitted but discarded. The 3D scene
