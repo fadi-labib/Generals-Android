@@ -61,8 +61,8 @@ elseif(APPLE AND SAGE_USE_MOLTENVK)
 
   include(ExternalProject)
   # GeneralsX @build BenderAI 13/03/2026 Add explicit source mode to keep remote branch updates deterministic by default.
-  set(DXVK_LOCAL_FORK_DIR "${CMAKE_SOURCE_DIR}/references/fbraz3-dxvk")
-  option(SAGE_DXVK_USE_LOCAL_FORK "Build DXVK from local references/fbraz3-dxvk checkout" OFF)
+  set(DXVK_LOCAL_FORK_DIR "${CMAKE_SOURCE_DIR}/references/fadi-labib-dxvk")
+  option(SAGE_DXVK_USE_LOCAL_FORK "Build DXVK from local references/fadi-labib-dxvk checkout" OFF)
 
   if(SAGE_DXVK_USE_LOCAL_FORK AND EXISTS "${DXVK_LOCAL_FORK_DIR}/.git")
     set(DXVK_SOURCE_DIR "${DXVK_LOCAL_FORK_DIR}")
@@ -81,7 +81,7 @@ elseif(APPLE AND SAGE_USE_MOLTENVK)
           COMMAND git -C "${DXVK_LOCAL_FORK_DIR}" apply "${CMAKE_SOURCE_DIR}/Patches/dxvk-ios.patch"
           RESULT_VARIABLE DXVK_PATCH_RESULT)
         if(NOT DXVK_PATCH_RESULT EQUAL 0)
-          message(FATAL_ERROR "Failed to apply Patches/dxvk-ios.patch to references/fbraz3-dxvk — the iOS DXVK build requires it.")
+          message(FATAL_ERROR "Failed to apply Patches/dxvk-ios.patch to references/fadi-labib-dxvk — the iOS DXVK build requires it.")
         endif()
         message(STATUS "DXVK iOS: applied Patches/dxvk-ios.patch")
       else()
@@ -91,7 +91,7 @@ elseif(APPLE AND SAGE_USE_MOLTENVK)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     # The remote clone has no way to receive the iOS patch; a silent fallback
     # here previously produced dylibs that die at Vulkan init on device.
-    message(FATAL_ERROR "iOS DXVK requires the local fork submodule. Run: git submodule update --init references/fbraz3-dxvk")
+    message(FATAL_ERROR "iOS DXVK requires the local fork submodule. Run: git submodule update --init references/fadi-labib-dxvk")
   else()
     set(DXVK_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/dxvk-src-fbraz3")
     message(STATUS "DXVK macOS build: using GitHub source clone at ${DXVK_SOURCE_DIR}")
@@ -296,9 +296,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Android" OR ANDROID)
   # Android must build from the local fbraz3 fork: it carries the macOS/iOS DXVK
   # work and receives Patches/dxvk-android.patch. A remote clone cannot be patched
   # idempotently here, so require the submodule (never build an unpatched tree).
-  set(DXVK_LOCAL_FORK_DIR "${CMAKE_SOURCE_DIR}/references/fbraz3-dxvk")
+  set(DXVK_LOCAL_FORK_DIR "${CMAKE_SOURCE_DIR}/references/fadi-labib-dxvk")
   if(NOT EXISTS "${DXVK_LOCAL_FORK_DIR}/.git")
-    message(FATAL_ERROR "Android DXVK requires the local fork submodule. Run: git submodule update --init --recursive references/fbraz3-dxvk")
+    message(FATAL_ERROR "Android DXVK requires the local fork submodule. Run: git submodule update --init --recursive references/fadi-labib-dxvk")
   endif()
   set(DXVK_SOURCE_DIR "${DXVK_LOCAL_FORK_DIR}")
   message(STATUS "DXVK Android build: using local fork source at ${DXVK_SOURCE_DIR}")
@@ -325,7 +325,7 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Android" OR ANDROID)
       COMMAND git -C "${DXVK_LOCAL_FORK_DIR}" apply "${CMAKE_SOURCE_DIR}/Patches/dxvk-android.patch"
       RESULT_VARIABLE DXVK_ANDROID_PATCH_RESULT)
     if(NOT DXVK_ANDROID_PATCH_RESULT EQUAL 0)
-      message(FATAL_ERROR "Failed to apply Patches/dxvk-android.patch to references/fbraz3-dxvk — the Android DXVK build requires it.")
+      message(FATAL_ERROR "Failed to apply Patches/dxvk-android.patch to references/fadi-labib-dxvk — the Android DXVK build requires it.")
     endif()
     message(STATUS "DXVK Android: applied Patches/dxvk-android.patch")
   else()

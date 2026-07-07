@@ -11,7 +11,7 @@
 	path = references/generals-online-client
 	url = https://github.com/GeneralsOnlineDevelopmentTeam/GameClient.git
 [submodule "references/fbraz3-dxvk"]
-	path = references/fbraz3-dxvk
+	path = references/fadi-labib-dxvk
 	url = https://github.com/fadi-labib/dxvk.git
 	branch = generalsx-android-v2.6
 [submodule "GeneralsReplays"]

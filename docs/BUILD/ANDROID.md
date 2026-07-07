@@ -113,10 +113,10 @@ cd GeneralsX
 ### Submodules (required for the renderer)
 
 ```bash
-git submodule update --init --recursive references/fbraz3-dxvk references/libadrenotools
+git submodule update --init --recursive references/fadi-labib-dxvk references/libadrenotools
 ```
 
-`references/fbraz3-dxvk` is the DXVK fork that gets `Patches/dxvk-android.patch` applied at
+`references/fadi-labib-dxvk` is the DXVK fork that gets `Patches/dxvk-android.patch` applied at
 build time (Turnip loader + Android WSI surface path); `references/libadrenotools` is the
 rootless custom-Vulkan-driver loader.
 
@@ -423,13 +423,13 @@ adb logcat -c && adb shell am start -n com.generalsx.generalszh/.GeneralsXZHActi
 |---|---|
 | `GeneralsMD/Code/Main/SDL3Main.cpp` | Entry point: Turnip staging, env setup (`DXVK_WSI_DRIVER`, `DXVK_CONFIG`, adrenotools vars), SDL init, window creation |
 | `GeneralsMD/Code/GameEngineDevice/Source/SDL3GameEngine.cpp` | Event loop; `GX_TOUCH_UI` guards the touch→mouse gesture translator + background render-pause (shared with iOS). Full design/debugging doc: [`docs/port/TOUCH_CONTROLS.md`](../port/TOUCH_CONTROLS.md) |
-| `Patches/dxvk-android.patch` | ALL DXVK changes (loader, WSI, meson, portability guards). Applied idempotently by `cmake/dx8.cmake` to the `references/fbraz3-dxvk` submodule |
+| `Patches/dxvk-android.patch` | ALL DXVK changes (loader, WSI, meson, portability guards). Applied idempotently by `cmake/dx8.cmake` to the `references/fadi-labib-dxvk` submodule |
 | `cmake/dx8.cmake` | Drives the DXVK meson cross-build inside the cmake build |
 | `scripts/build/android/*.sh` | env check, adrenotools build, Turnip fetch, APK packaging, asset push, headless replay harness |
 | `android/app/` | Gradle shell app (SDLActivity subclass `GeneralsXZHActivity`) |
 
 **Rule: the DXVK submodule working tree must stay byte-identical to the patch.** If you
-edit DXVK code, regenerate: `cd references/fbraz3-dxvk && git diff >
+edit DXVK code, regenerate: `cd references/fadi-labib-dxvk && git diff >
 ../../Patches/dxvk-android.patch`, and verify `diff <(git diff)
 ../../Patches/dxvk-android.patch` says identical.
 

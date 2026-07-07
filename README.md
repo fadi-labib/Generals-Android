@@ -12,8 +12,9 @@ bundled [Mesa Turnip](https://docs.mesa3d.org/drivers/freedreno.html) driver, lo
 rootlessly with [libadrenotools](https://github.com/bylaws/libadrenotools). RTS touch
 controls: tap-select, drag-box, long-press right-click, two-finger pan, pinch zoom.
 
-![Zero Hour skirmish on a Galaxy Tab S7+](docs/BUILD/screenshots/android-tab-s7plus-ingame.png)
-![Zero Hour skirmish gameplay on a Galaxy Tab S7+](docs/BUILD/screenshots/android-tab-s7plus-skirmish.gif)
+<p align="center">
+  <img src="docs/BUILD/screenshots/android-tab-s7plus-skirmish.gif" alt="Zero Hour skirmish gameplay on a Galaxy Tab S7+">
+</p>
 
 Ported in **under 24 hours** as a **human + AI collaboration** — possible only because
 [Ammaar Reshi's iOS/iPadOS port](https://github.com/ammaarreshi/Generals-Mac-iOS-iPad)
@@ -47,7 +48,7 @@ Full list: [Known issues & remaining work](https://fadi-labib.github.io/Generals
 
 ```sh
 git clone https://github.com/fadi-labib/Generals-Android.git && cd Generals-Android
-git submodule update --init --recursive references/fbraz3-dxvk references/libadrenotools
+git submodule update --init --recursive references/fadi-labib-dxvk references/libadrenotools
 cmake --preset android-vulkan
 cmake --build build/android-vulkan --target z_generals -j$(nproc --ignore=1)
 ./scripts/build/android/build-adrenotools.sh && ./scripts/build/android/fetch-turnip.sh

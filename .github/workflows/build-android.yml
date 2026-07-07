@@ -23,7 +23,7 @@ jobs:
       # cmake's Android DXVK path requires the local fork submodule at configure time
       # and inits its nested submodules itself.
       - name: Init DXVK submodule
-        run: git submodule update --init references/fbraz3-dxvk
+        run: git submodule update --init references/fadi-labib-dxvk
 
       - name: Free disk space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/node_modules /opt/hostedtoolcache/CodeQL

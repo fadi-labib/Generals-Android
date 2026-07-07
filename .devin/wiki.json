@@ -9,7 +9,7 @@
       "author": "GeneralsX Team"
     },
     {
-      "content": "Build system uses CMake with multiple presets. Legacy Windows (maintenance only): 'vc6' (Visual Studio 6, 32-bit, DirectX 8 + Miles), 'win32' (MSVC 2022, experimental upstream path). Cross-platform releases: 'linux64-deploy' (Linux native ELF, primary), 'linux64-testing' (Linux debug), 'macos-vulkan' (macOS ARM64, active release), 'mingw-w64-i686' (MinGW-w64 cross-compile, current active Windows pipeline), 'windows64-deploy' (planned MinGW-w64 x86_64, tracked in issue #29). Development uses feature branches per platform or topic area, merged to main as they stabilize. Scripts are organized under scripts/build/, scripts/env/, scripts/qa/, scripts/tooling/. Build logs go to logs/. DXVK source of truth is the fork branch generalsx-macos-v2.6 in references/fbraz3-dxvk; fixes must be committed there and consumed from the tracked remote branch — never patch build/_deps/ directly.",
+      "content": "Build system uses CMake with multiple presets. Legacy Windows (maintenance only): 'vc6' (Visual Studio 6, 32-bit, DirectX 8 + Miles), 'win32' (MSVC 2022, experimental upstream path). Cross-platform releases: 'linux64-deploy' (Linux native ELF, primary), 'linux64-testing' (Linux debug), 'macos-vulkan' (macOS ARM64, active release), 'mingw-w64-i686' (MinGW-w64 cross-compile, current active Windows pipeline), 'windows64-deploy' (planned MinGW-w64 x86_64, tracked in issue #29). Development uses feature branches per platform or topic area, merged to main as they stabilize. Scripts are organized under scripts/build/, scripts/env/, scripts/qa/, scripts/tooling/. Build logs go to logs/. DXVK source of truth is the fork branch generalsx-macos-v2.6 in references/fadi-labib-dxvk; fixes must be committed there and consumed from the tracked remote branch — never patch build/_deps/ directly.",
       "author": "GeneralsX Team"
     },
     {
@@ -64,12 +64,12 @@
     },
     {
       "title": "Cross-Platform Port Strategy",
-      "purpose": "Document the cross-platform port approach targeting Linux, macOS, and Windows under a single codebase: SDL3 (windowing/input), DXVK (DirectX 8→Vulkan on all platforms), OpenAL (audio), 64-bit native. Cover the feature-branch merge strategy, the unified technology stack, DXVK fork source-of-truth policy (references/fbraz3-dxvk, branch generalsx-macos-v2.6), CompatLib pre-guards in windows_compat.h, and reference repositories (fighter19 for graphics, jmarshall for audio).",
+      "purpose": "Document the cross-platform port approach targeting Linux, macOS, and Windows under a single codebase: SDL3 (windowing/input), DXVK (DirectX 8→Vulkan on all platforms), OpenAL (audio), 64-bit native. Cover the feature-branch merge strategy, the unified technology stack, DXVK fork source-of-truth policy (references/fadi-labib-dxvk, branch generalsx-macos-v2.6), CompatLib pre-guards in windows_compat.h, and reference repositories (fighter19 for graphics, jmarshall for audio).",
       "parent": null
     },
     {
       "title": "DXVK Integration",
-      "purpose": "Document the DXVK DirectX8→Vulkan integration (cross-platform): DXVK source-of-truth policy (fork branch generalsx-macos-v2.6 in references/fbraz3-dxvk, consumed via CMake FetchContent tracking the remote branch), pre-guard compatibility shims in GeneralsMD/Code/CompatLib/Include/windows_compat.h, SDL3 windowing hooks, and the device wrapper pattern from fighter19's reference. DXVK works on Linux (native Vulkan), macOS (via MoltenVK), and Windows (native Vulkan). Cover cmake/dx8.cmake, SAGE_DXVK_USE_LOCAL_FORK flag, and the rule to never patch build/_deps/ directly.",
+      "purpose": "Document the DXVK DirectX8→Vulkan integration (cross-platform): DXVK source-of-truth policy (fork branch generalsx-macos-v2.6 in references/fadi-labib-dxvk, consumed via CMake FetchContent tracking the remote branch), pre-guard compatibility shims in GeneralsMD/Code/CompatLib/Include/windows_compat.h, SDL3 windowing hooks, and the device wrapper pattern from fighter19's reference. DXVK works on Linux (native Vulkan), macOS (via MoltenVK), and Windows (native Vulkan). Cover cmake/dx8.cmake, SAGE_DXVK_USE_LOCAL_FORK flag, and the rule to never patch build/_deps/ directly.",
       "parent": "Cross-Platform Port Strategy"
     },
     {

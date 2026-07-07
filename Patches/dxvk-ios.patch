@@ -1,9 +1,9 @@
 # DXVK iOS patch
 #
-# Local modifications to references/fbraz3-dxvk (at 46a3bc01) used to
+# Local modifications to references/fadi-labib-dxvk (at 46a3bc01) used to
 # build the libdxvk_d3d8/d3d9 dylibs that package-ios-zh.sh embeds: dlopen MoltenVK from
 # the app bundle's Frameworks directory, and SDL3 WSI fixes for the iOS drawable.
-# Apply with: git -C references/fbraz3-dxvk apply ../../Patches/dxvk-ios.patch
+# Apply with: git -C references/fadi-labib-dxvk apply ../../Patches/dxvk-ios.patch
 # Then build with: meson setup --cross-file cmake/meson-arm64-ios-cross.ini ...
 diff --git a/src/vulkan/vulkan_loader.cpp b/src/vulkan/vulkan_loader.cpp
 index 518efcb1..a70ea8fb 100644

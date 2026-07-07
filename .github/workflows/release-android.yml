@@ -29,7 +29,7 @@ jobs:
       - name: Init required submodules
         run: |
           git submodule update --init --recursive references/libadrenotools
-          git submodule update --init references/fbraz3-dxvk
+          git submodule update --init references/fadi-labib-dxvk
 
       # vcpkg builds FFmpeg/OpenAL for arm64-android from source; the runner's
       # 14 GB free disk is tight, so drop the biggest unused preinstalled toolchains.

@@ -119,7 +119,7 @@ Everything needed beyond "it compiles for macOS." Each was discovered by attempt
 - **DXVK's SDL WSI calls SDL via a runtime-loaded function-pointer table** (`SDL_PROC` list in `src/wsi/sdl3/wsi_platform_sdl3_funcs.h`), NOT direct linking. Adding any new SDL call (we needed `SDL_GetWindowSizeInPixels`) requires a table entry; a direct call = undefined symbol at link (no `-lSDL3` anywhere, by design).
 - **High-DPI completeness**: with a high-density window, *every* size query in the present path must be in pixels. DXVK WSI `getWindowSize` switched `SDL_GetWindowSize` → `SDL_GetWindowSizeInPixels`; symptom of missing this = game renders 1:1 in the **corner** of the screen (points-sized swapchain in a pixels-sized layer).
 - **Fonts without fontconfig** (`render2dsentence.cpp/h`): iOS implementation of the font locator → normalize face name (lowercase, strip spaces) → `fonts/<name>.{ttf,otf,ttc}` relative to CWD → fall back to `fonts/arial.ttf`. Ship Liberation fonts renamed (`LiberationSans→arial.ttf` etc.) — metric-compatible with Arial/Times/Courier, freely redistributable.
-- **DXVK source patches need a local fork**: the superbuild pins a remote commit; edits to `_deps/` checkouts are disposable. `git clone <fork> references/fbraz3-dxvk && git checkout <pinned>`, build with `SAGE_DXVK_USE_LOCAL_FORK=ON`.
+- **DXVK source patches need a local fork**: the superbuild pins a remote commit; edits to `_deps/` checkouts are disposable. `git clone <fork> references/fadi-labib-dxvk && git checkout <pinned>`, build with `SAGE_DXVK_USE_LOCAL_FORK=ON`.
 
 ---
 
@@ -218,7 +218,7 @@ Architecture: translate touch → synthetic SDL mouse events injected through th
 | `Core/.../WW3D2/dx8wrapper.cpp` | iOS: dlopen DXVK from `@executable_path/Frameworks` |
 | `GeneralsMD/Code/Main/SDL3Main.cpp` | SDL_main, bundle/Documents CWD, res injection, high-DPI flag, touch-hint, cache path, Options seeding, Documents cleanup |
 | `GeneralsMD/.../SDL3GameEngine.cpp` | touch gesture state machine; lifecycle watcher + render gate; touch-mouse dedup |
-| `references/fbraz3-dxvk/` | local DXVK fork @ pinned commit: vulkan_loader bundle paths; WSI `SDL_GetWindowSizeInPixels` (+ SDL_PROC table entry) |
+| `references/fadi-labib-dxvk/` | local DXVK fork @ pinned commit: vulkan_loader bundle paths; WSI `SDL_GetWindowSizeInPixels` (+ SDL_PROC table entry) |
 | `vcpkg.json` | fontconfig `!ios`; ffmpeg for iOS + version overrides |
 | `ios/project.yml`, `ios/Stub/` | XcodeGen shell app, Info.plist keys, asset catalog (AppIcon) |
 | `scripts/build/ios/package-ios-zh.sh` | full packaging pipeline (see §5), `--dev` mode, icon PNG fallbacks |

@@ -225,7 +225,7 @@ printf "%s" "$body" | rg '\\n' && echo "HAS_LITERAL_BACKSLASH_N=YES" || echo "HA
 | `cpp-conventions.instructions.md` | `**/*.{cpp,h,hpp,c}` | Code style, annotations, platform isolation |
 | `build.instructions.md` | `cmake/**,CMakeLists.txt,CMakePresets.json` | Build presets, DXVK source of truth |
 | `platform-linux.instructions.md` | `scripts/build/linux/**` | Linux build notes |
-| `platform-macos.instructions.md` | `scripts/build/macos/**,references/fbraz3-dxvk/**` | macOS/DXVK build notes |
+| `platform-macos.instructions.md` | `scripts/build/macos/**,references/fadi-labib-dxvk/**` | macOS/DXVK build notes |
 | `docs.instructions.md` | `**/*.md` | Documentation structure and workflow |
 | `scripts.instructions.md` | `scripts/**` | Script organization and naming |
 
