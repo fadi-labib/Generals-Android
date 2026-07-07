@@ -1,4 +1,4 @@
-# Command & Conquer Generals: Zero Hour — macOS, iOS & iPadOS
+# Command & Conquer Generals: Zero Hour — macOS, iOS, iPadOS & Android
 
 <img width="500" height="281" alt="IMG_3457_500" src="https://github.com/user-attachments/assets/aeaf6692-36e6-40c8-b9f8-8066d014ec4b" />
 
@@ -8,6 +8,16 @@ drag-box, long-press deselect, two-finger scroll, pinch zoom). No emulation: thi
 is the real 2003 engine compiled for ARM64, rendering DirectX 8 →
 [DXVK](https://github.com/doitsujin/dxvk) → Vulkan →
 [MoltenVK](https://github.com/KhronosGroup/MoltenVK) → Metal.
+
+**And now Android** (2026-07-07): the same engine plays skirmish matches on a Galaxy
+Tab S7+ at ~30–60 FPS — DirectX 8 → DXVK → Vulkan 1.3 on a bundled
+[Mesa Turnip](https://docs.mesa3d.org/drivers/freedreno.html) driver, loaded
+rootlessly via [libadrenotools](https://github.com/bylaws/libadrenotools) because
+the stock Adreno driver only speaks Vulkan 1.1. See
+[docs/BUILD/ANDROID.md](docs/BUILD/ANDROID.md) for the build guide, the rendering
+pipeline, and what's left.
+
+![Zero Hour skirmish on a Galaxy Tab S7+](docs/BUILD/screenshots/android-tab-s7plus-ingame.png)
 
 Built on EA's GPL v3 source release, standing on a chain of community work —
 [TheSuperHackers](https://github.com/TheSuperHackers/GeneralsGameCode),
@@ -108,6 +118,28 @@ Find your team id in Xcode → Settings → Accounts. Assets ship inside the app
 bundle (self-contained install); `--dev` skips the ~2.7 GB copy for fast code
 iteration.
 
+## Quick start — Android (experimental)
+
+Requires an **arm64 device with a Qualcomm Adreno 6xx/7xx GPU** (tested: Galaxy Tab
+S7+ / Adreno 650), Ubuntu host, Android NDK r27 + SDK, Gradle 8.9, JDK 21, vcpkg.
+Full prerequisites and troubleshooting: [docs/BUILD/ANDROID.md](docs/BUILD/ANDROID.md).
+
+```sh
+cd GeneralsX
+git submodule update --init --recursive references/fbraz3-dxvk references/libadrenotools
+cmake --preset android-vulkan
+cmake --build build/android-vulkan --target z_generals -j$(nproc --ignore=1)
+./scripts/build/android/build-adrenotools.sh    # rootless Vulkan-driver loader
+./scripts/build/android/fetch-turnip.sh         # pinned Mesa Turnip (Vulkan 1.3)
+./scripts/build/android/package-android-zh.sh --install
+./scripts/build/android/push-assets-android.sh  # your own game files → /sdcard/GeneralsZH
+```
+
+Status: menus, shell map, and live skirmish matches render and play. Touch needs
+polish (menu buttons currently take two taps), audio is unverified, and non-Adreno
+GPUs (e.g. Samsung Xclipse) aren't supported yet — the honest list lives in
+[Known issues & remaining work](docs/BUILD/ANDROID.md#known-issues--remaining-work).
+
 ## Where things are
 
 | Path | What it is |
@@ -116,9 +148,12 @@ iteration.
 | `docs/port/PORTING_PATTERNS.md` | Generalized methodology for porting classic Windows games to Apple platforms |
 | `docs/port/RELEASE_CHECKLIST.md` | Gate for public release |
 | `scripts/get-assets.sh` | Steam asset fetcher (your own copy; app 2732960) |
-| `scripts/build/macos/`, `scripts/build/ios/` | Build, deploy, packaging pipelines |
+| `scripts/build/macos/`, `scripts/build/ios/`, `scripts/build/android/` | Build, deploy, packaging pipelines |
 | `ios/` | XcodeGen signing-stub project + `ios/config/` (staged Options.ini, dxvk.conf) |
+| `android/` | Gradle shell app (SDLActivity subclass) the game's `libmain.so` runs inside |
+| [`docs/BUILD/ANDROID.md`](docs/BUILD/ANDROID.md) | Android build guide: toolchain, DXVK/Turnip pipeline, device setup, known issues |
 | `Patches/dxvk-ios.patch` | DXVK changes the iOS d3d8/d3d9 dylibs are built from (applied via the local-fork build) |
+| `Patches/dxvk-android.patch` | DXVK changes for Android: Turnip-via-adrenotools Vulkan loader + single-loader Android WSI surface path |
 
 ## Known issues
 
@@ -167,7 +202,13 @@ work that this repo inherits everywhere:
 - **[fbraz3/GeneralsX](https://github.com/fbraz3/GeneralsX)** — the macOS/Linux port
   this fork builds on directly, integrating and extending the above
 - **This fork** — the iOS/iPadOS port (arm64-ios cross-build, DXVK-on-iOS, touch
-  controls, app lifecycle, packaging) and engine fixes, offered upstream
+  controls, app lifecycle, packaging), the Android port (arm64-android cross-build,
+  DXVK-on-Android, Mesa Turnip via libadrenotools, Gradle/SDLActivity packaging),
+  and engine fixes, offered upstream
+- **[Mesa Turnip](https://docs.mesa3d.org/drivers/freedreno.html)** and
+  **[libadrenotools](https://github.com/bylaws/libadrenotools)** (with
+  [K11MCH1's driver builds](https://github.com/K11MCH1/AdrenoToolsDrivers)) — the
+  open Vulkan 1.3 driver stack that makes the Android renderer possible
 - **DXVK, MoltenVK, SDL, OpenAL Soft, FFmpeg, Liberation Fonts** — the load-bearing walls
 
 Engine code **GPL v3** (EA's source release → the chain above → this fork). Game
