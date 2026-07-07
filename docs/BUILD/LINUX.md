@@ -340,11 +340,11 @@ The Linux port **Phase 1 (Graphics) is COMPLETE** ✅
 
 ## Additional Resources
 
-- **Development Diary**: See [../DEV_BLOG/README.md](../DEV_BLOG/README.md)
-- **Phase Documentation**: See [../WORKDIR/phases/](../WORKDIR/phases/)
-- **Docker Scripts**: See [../../scripts/README_DOCKER_SCRIPTS.md](../../scripts/README_DOCKER_SCRIPTS.md)
+- **Development Diary**: See `../DEV_BLOG/README.md`
+- **Phase Documentation**: See [../WORKDIR/phases/](https://github.com/fadi-labib/Generals-Android/blob/main/docs/WORKDIR/phases)
+- **Docker Scripts**: See [../../scripts/README_DOCKER_SCRIPTS.md](https://github.com/fadi-labib/Generals-Android/blob/main/scripts/README_DOCKER_SCRIPTS.md)
 - **Reference Repos**: See [../../references/fighter19-dxvk-port/](../../references/fighter19-dxvk-port/)
-- **DXVK Architecture**: See [../WORKDIR/support/](../WORKDIR/support/)
+- **DXVK Architecture**: See [../WORKDIR/support/](https://github.com/fadi-labib/Generals-Android/blob/main/docs/WORKDIR/support)
 
 ## Support
 

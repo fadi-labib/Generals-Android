@@ -11,9 +11,9 @@ Vulkan 1.3 (Mesa Turnip + DXVK), SDL3, OpenAL, touch controls.
 | Doc | What it covers |
 |-----|----------------|
 | [ANDROID.md](BUILD/ANDROID.md) | **The complete guide**: build from source, rendering pipeline, debugging toolbox, traps, known issues, regression checklist |
-| [Renderer research](WORKDIR/planning/ANDROID_RENDERER_RESEARCH_2026-07.md) | Phase 0: how the Turnip-via-adrenotools route was chosen |
-| [Port findings](WORKDIR/planning/ANDROID_PORT_FINDINGS_2026-07-06.md) | Codebase audit that shaped the plan |
-| [Design spec](superpowers/specs/2026-07-06-android-port-design.md) · [Phase 0–2 plan](superpowers/plans/2026-07-06-android-port-phase0-2.md) · [Phase 3 plan](superpowers/plans/2026-07-06-android-port-phase3-renderer.md) | How the port was actually planned and executed (human + AI) |
+| [Renderer research](https://github.com/fadi-labib/Generals-Android/blob/main/docs/WORKDIR/planning/ANDROID_RENDERER_RESEARCH_2026-07.md) | Phase 0: how the Turnip-via-adrenotools route was chosen |
+| [Port findings](https://github.com/fadi-labib/Generals-Android/blob/main/docs/WORKDIR/planning/ANDROID_PORT_FINDINGS_2026-07-06.md) | Codebase audit that shaped the plan |
+| [Design spec](https://github.com/fadi-labib/Generals-Android/blob/main/docs/superpowers/specs/2026-07-06-android-port-design.md) · [Phase 0–2 plan](https://github.com/fadi-labib/Generals-Android/blob/main/docs/superpowers/plans/2026-07-06-android-port-phase0-2.md) · [Phase 3 plan](https://github.com/fadi-labib/Generals-Android/blob/main/docs/superpowers/plans/2026-07-06-android-port-phase3-renderer.md) | How the port was actually planned and executed (human + AI) |
 
 ## Inherited from the GeneralsX lineage
 

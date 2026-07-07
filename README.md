@@ -59,7 +59,7 @@ The repo is built to keep working that way — see [Contributing](#contributing)
 | Two-device boot workaround (cosmetic, boot-time) | ⚠️ load-bearing — [#8](https://github.com/fadi-labib/Generals-Android/issues/8) |
 
 The honest, detailed list lives in
-[Known Issues & Remaining Work](docs/BUILD/ANDROID.md#known-issues--remaining-work).
+[Known Issues & Remaining Work](docs/BUILD/ANDROID.md#known-issues-and-remaining-work).
 
 ## The porting story
 

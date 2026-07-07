@@ -1,8 +1,8 @@
 name: Docs
 
 # GeneralsX @docs FadiLabib 07/07/2026 - Build the MkDocs Material site and deploy to
-# GitHub Pages via Actions (replaces the legacy Jekyll from-branch build). Not using
-# --strict yet: legacy docs contain historical links; tighten once they're swept.
+# GitHub Pages via Actions (replaces the legacy Jekyll from-branch build). --strict:
+# a broken internal link fails the build instead of shipping a 404.
 
 on:
   push:
@@ -31,7 +31,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install mkdocs-material
-      - run: mkdocs build
+      - run: mkdocs build --strict
       - uses: actions/upload-pages-artifact@v4
         with:
           path: site

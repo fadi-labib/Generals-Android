@@ -1,7 +1,8 @@
-# GeneralsX @docs FadiLabib 07/07/2026 - Minimal MkDocs Material site: auto-generated
-# nav from the docs/ folder structure (no hand-curated nav yet), search, dark mode.
-# Built and deployed by .github/workflows/docs-pages.yml (replaces the legacy Jekyll
-# Pages build, which had no navigation at all).
+# GeneralsX @docs FadiLabib 07/07/2026 - MkDocs Material site with a curated reader
+# journey (Play -> Build -> Porting deep-dives -> Reference -> Dev blog). Internal
+# working documents (docs/WORKDIR, docs/superpowers) are repo-only: excluded from the
+# site, linked from public pages via absolute GitHub URLs. Built and deployed by
+# .github/workflows/docs-pages.yml with --strict (broken internal links fail CI).
 site_name: Generals Zero Hour on Android
 site_description: C&C Generals Zero Hour running natively on Android — Vulkan (Turnip + DXVK), SDL3, OpenAL
 site_url: https://fadi-labib.github.io/Generals-Android/
@@ -38,3 +39,38 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.highlight
   - tables
+
+# Internal working docs stay in the repo but off the public site.
+exclude_docs: |
+  WORKDIR/
+  superpowers/
+
+nav:
+  - Home: index.md
+  - Play:
+      - Get the game files: HOWTO/GETTING_THE_GAME_FILES.md
+      - Installation: HOWTO/INSTALLATION.md
+      - Known issues: KNOWN_ISSUES/README.md
+  - Build:
+      - Android: BUILD/ANDROID.md
+      - macOS: BUILD/MACOS.md
+      - Linux: BUILD/LINUX.md
+  - Porting deep-dives:
+      - Porting playbook (iOS): port/PORTING_PLAYBOOK.md
+      - Porting patterns: port/PORTING_PATTERNS.md
+      - Touch controls: port/TOUCH_CONTROLS.md
+      - Release checklist: port/RELEASE_CHECKLIST.md
+  - Reference:
+      - Command-line parameters: ETC/COMMAND_LINE_PARAMETERS.md
+      - SagePatch: PATCHES/SAGEPATCH.md
+      - SagePatch configuration: HOWTO/SAGEPATCH_CONFIGURATION.md
+      - Russian localization: HOWTO/RUSSIAN_LOCALIZATION.md
+      - HOWTO index: HOWTO/README.md
+      - 'Archive: Linux graphics phase 1': ETC/archive/PHASE01_LINUX_GRAPHICS.md
+  - Dev blog:
+      - 2026-07: DEV_BLOG/2026-07-DIARY.md
+      - 2026-06: DEV_BLOG/2026-06-DIARY.md
+      - 2026-05: DEV_BLOG/2026-05-DIARY.md
+      - 2026-04: DEV_BLOG/2026-04-DIARY.md
+      - 2026-03: DEV_BLOG/2026-03-DIARY.md
+      - 2026-02: DEV_BLOG/2026-02-DIARY.md

@@ -5,13 +5,13 @@
 > skirmish match at native 2800×1752, ~30-60 FPS — via DXVK (D3D8→Vulkan) on a bundled
 > Mesa Turnip driver loaded rootlessly through libadrenotools. See
 > [Current Status](#current-status), the [rendering pipeline](#rendering-pipeline-phase-3),
-> and [Known issues & remaining work](#known-issues--remaining-work).
+> and [Known issues & remaining work](#known-issues-and-remaining-work).
 
 ![Skirmish match on Galaxy Tab S7+](screenshots/android-tab-s7plus-ingame.png)
 
 > **Continuing this work?** This document is the complete handover: the
 > [rendering pipeline](#rendering-pipeline-phase-3) is the mental model, and
-> [Development Loop, Debugging & Traps](#development-loop-debugging--traps) carries the
+> [Development Loop, Debugging & Traps](#development-loop-debugging-and-traps) carries the
 > hard-won lessons from the sessions that got the port here.
 > Touch controls (gestures, state machine, design rationale, debugging):
 > [docs/port/TOUCH_CONTROLS.md](../port/TOUCH_CONTROLS.md).
@@ -288,7 +288,7 @@ log lines (replay progress, frame/game-time, any CRC mismatch).
 A **macOS-recorded** replay played back on Android hits a genuine cross-platform determinism
 mismatch (bionic libm vs Apple libm transcendental-function drift accumulating over hundreds
 of frames — expected and documented, not an Android defect: see
-[ANDROID_PORT_FINDINGS_2026-07-06.md §7](../WORKDIR/planning/ANDROID_PORT_FINDINGS_2026-07-06.md)).
+[ANDROID_PORT_FINDINGS_2026-07-06.md §7](https://github.com/fadi-labib/Generals-Android/blob/main/docs/WORKDIR/planning/ANDROID_PORT_FINDINGS_2026-07-06.md)).
 To get a same-platform, bit-exact replay, the engine can record its own AI-vs-AI skirmish
 headlessly and then play that recording back on the same device:
 
@@ -325,12 +325,12 @@ check.
 | Phase 1 | Build system, Gradle shell app, packaging, app launches | ✅ Done — app runs `SDL_main` on-device (logcat: `Running main function SDL_main from library .../libmain.so`) |
 | Phase 2 | Headless verification (non-graphics engine) | ✅ Done — Android-recorded AI-vs-AI skirmish replay (Maps/Whiteout.map, 1500 frames / 00:50 game time) plays back to exit 0, no CRC mismatch |
 | Phase 3 | Renderer bring-up (DXVK cross-build, Turnip bundling, WSI, crash fixes) | ✅ **Done — the game renders and plays** (2026-07-07, Tab S7+/Adreno 650): main menu + shell map, skirmish lobby, live match, ~30-60 FPS at 2800×1752, driven end-to-end by touch |
-| Phase 4+ | Touch controls polish, lifecycle (pause/resume), audio verification, perf, non-Adreno devices | ⏳ Next — see [Known issues & remaining work](#known-issues--remaining-work) |
+| Phase 4+ | Touch controls polish, lifecycle (pause/resume), audio verification, perf, non-Adreno devices | ⏳ Next — see [Known issues & remaining work](#known-issues-and-remaining-work) |
 
 ### Gate evidence
 
 - **P0**: route decided — `require-turnip` (native-arm64 dxvk-native + bundled Mesa Turnip via
-  libadrenotools). See [§5 of the renderer research doc](../WORKDIR/planning/ANDROID_RENDERER_RESEARCH_2026-07.md#5-decision).
+  libadrenotools). See [§5 of the renderer research doc](https://github.com/fadi-labib/Generals-Android/blob/main/docs/WORKDIR/planning/ANDROID_RENDERER_RESEARCH_2026-07.md#5-decision).
 - **P1**: app launches and runs the engine's `SDL_main` entry point on-device (confirmed via
   `adb logcat`).
 - **P2**: Android-recorded skirmish replay (`Maps/Whiteout.map`, `-skirmishFrames 1500`)
@@ -403,7 +403,7 @@ before baking the fix into code.)
 
 ---
 
-## Development Loop, Debugging & Traps
+## Development Loop, Debugging and Traps
 
 ### Iteration cycle (~2 min once the toolchain is set up)
 
@@ -475,7 +475,7 @@ edit DXVK code, regenerate: `cd references/fbraz3-dxvk && git diff >
 
 ---
 
-## Known Issues & Remaining Work
+## Known Issues and Remaining Work
 
 **Resolved during the 2026-07-07 session** (kept here so future readers know these were
 real and are fixed, not never-encountered):
@@ -552,11 +552,11 @@ After any change, verify on-device:
 
 ## Renderer-Route Decision
 
-Full research and decision: [`docs/WORKDIR/planning/ANDROID_RENDERER_RESEARCH_2026-07.md`](../WORKDIR/planning/ANDROID_RENDERER_RESEARCH_2026-07.md),
+Full research and decision: [`docs/WORKDIR/planning/ANDROID_RENDERER_RESEARCH_2026-07.md`](https://github.com/fadi-labib/Generals-Android/blob/main/docs/WORKDIR/planning/ANDROID_RENDERER_RESEARCH_2026-07.md),
 decision in §5. Route: **`require-turnip`** — native-arm64 dxvk-native (mainline DXVK 2.x,
 SDL3 WSI) with bundled Mesa Turnip loaded rootless via `libadrenotools`, targeting Qualcomm
 Adreno flagships (Vulkan 1.3 floor). Codebase findings that fed this plan:
-[`docs/WORKDIR/planning/ANDROID_PORT_FINDINGS_2026-07-06.md`](../WORKDIR/planning/ANDROID_PORT_FINDINGS_2026-07-06.md).
+[`docs/WORKDIR/planning/ANDROID_PORT_FINDINGS_2026-07-06.md`](https://github.com/fadi-labib/Generals-Android/blob/main/docs/WORKDIR/planning/ANDROID_PORT_FINDINGS_2026-07-06.md).
 
 ---
 

@@ -4,7 +4,7 @@
 **Created**: 2026-02-07 (Session 5)
 **Superseded**: 2026-02-08 (Session 6)
 
-> **NOTE**: This document was replaced by the more detailed [PHASE01_IMPLEMENTATION_PLAN.md](./PHASE01_IMPLEMENTATION_PLAN.md).  
+> **NOTE**: This document was replaced by the more detailed `PHASE01_IMPLEMENTATION_PLAN.md`.  
 > Kept for historical reference only. See the implementation plan for current progress.
 
 ---
