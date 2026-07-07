@@ -12,8 +12,8 @@
 	url = https://github.com/GeneralsOnlineDevelopmentTeam/GameClient.git
 [submodule "references/fbraz3-dxvk"]
 	path = references/fbraz3-dxvk
-	url = https://github.com/fbraz3/dxvk.git
-	branch = generalsx-macos-v2.6
+	url = https://github.com/fadi-labib/dxvk.git
+	branch = generalsx-android-v2.6
 [submodule "GeneralsReplays"]
 	path = GeneralsReplays
 	url = https://github.com/fbraz3/GeneralsXReplays.git
