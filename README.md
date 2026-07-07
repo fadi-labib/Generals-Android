@@ -6,6 +6,7 @@
 [![Platform](https://img.shields.io/badge/device-arm64%20·%20Adreno%206xx%2F7xx-orange)](docs/BUILD/ANDROID.md#devices-profiled)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 [![Discussions](https://img.shields.io/github/discussions/fadi-labib/Generals-Android?color=8B5CF6)](https://github.com/fadi-labib/Generals-Android/discussions)
+[![Docs](https://img.shields.io/badge/docs-fadi--labib.github.io-blue?logo=readthedocs&logoColor=white)](https://fadi-labib.github.io/Generals-Android/)
 
 **The real 2003 engine, compiled for arm64, playing skirmish matches on a tablet.**
 No emulation, no streaming: EA's GPL v3 source release, cross-built for Android,
@@ -16,6 +17,11 @@ the stock Adreno driver only speaks Vulkan 1.1. Touch controls built for RTS:
 tap-select, drag-box, long-press right-click, two-finger pan, pinch zoom.
 
 ![Zero Hour skirmish on a Galaxy Tab S7+](docs/BUILD/screenshots/android-tab-s7plus-ingame.png)
+
+Ported in **under 24 hours** — a speed that was only possible because
+[Ammaar Reshi's iOS/iPadOS port](https://github.com/ammaarreshi/Generals-Mac-iOS-iPad)
+and the whole [GeneralsX lineage](#the-porting-story) had already carried this engine
+across the hard miles. This repo is the Android chapter of their story.
 
 This port is a **human + AI collaboration**, and proudly so: the C++, the
 cross-builds, and the device debugging were done by
@@ -59,8 +65,13 @@ The honest, detailed list lives in
 
 ### What we inherited
 
-This project is the newest link in a chain, and says so gladly. From the lineage came
-the foundation this port stands on:
+This project is the newest link in a chain, and says so gladly. The Android port came
+together in **under a day** — and that speed is almost entirely borrowed. The genuinely
+hard work, spread over years by the people below, was already done: making a 2003
+Windows / DirectX 8 game build and run on modern 64-bit ARM *at all* — the compatibility
+layer, the SDL3 platform port, the DXVK renderer path, the OpenAL and FFmpeg backends.
+Android didn't have to solve any of that. It mostly had to teach an already-working
+machine about one more platform. From the lineage came the foundation this port stands on:
 
 - **EA's GPL v3 source release** — the engine itself.
 - **[TheSuperHackers/GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode)** —
@@ -73,11 +84,18 @@ the foundation this port stands on:
 - **[fbraz3/GeneralsX](https://github.com/fbraz3/GeneralsX)** — the macOS/Linux port:
   the platform compatibility layer, vcpkg build system, and DXVK integration this
   repo cross-compiles.
-- **[ammaarreshi/Generals-Mac-iOS-iPad](https://github.com/ammaarreshi/Generals-Mac-iOS-iPad)**
-  — the direct parent: the iOS/iPadOS port whose touch→mouse gesture translator,
-  app-lifecycle handling, and DXVK cross-build methodology Android reuses nearly
-  verbatim. Want this game on a Mac, iPhone, or iPad? **Go there** — that's their
-  project and their story.
+- **[Ammaar Reshi's iOS/iPadOS port](https://github.com/ammaarreshi/Generals-Mac-iOS-iPad)**
+  — the direct parent, and the single biggest reason this port took a day instead of
+  months. Nearly every hard problem Android faced, his port had already solved once:
+  the touch→mouse gesture translator (tap-defer, drag-box, long-press, pan, pinch —
+  reused **verbatim**, Android widened an `#if` guard), the app-lifecycle render
+  pause, the DXVK-on-mobile cross-build methodology (meson cross-file + patch
+  workflow that `dxvk-android.patch` copies wholesale), the fontconfig-free font
+  staging, and — maybe most valuable of all — the
+  [Porting Playbook](docs/port/PORTING_PLAYBOOK.md): a written record of every
+  failure mode and root cause, which turned Android's debugging nights from
+  archaeology into lookups. Want this game on a Mac, iPhone, or iPad? **Go there** —
+  that's their project and their story.
 
 ### What we built here
 
