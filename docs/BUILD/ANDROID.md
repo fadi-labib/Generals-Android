@@ -301,6 +301,19 @@ This fires a 2-AI free-for-all skirmish on the named map, runs it to the given f
 file and feeding it back into `run-headless-replay.sh` closes the loop: **Android-recorded,
 Android-played, no cross-platform libm involved.**
 
+### 3. One-command smoke test (record + replay + assert)
+
+```bash
+./scripts/build/android/smoke-test-android.sh [timeout_s]
+```
+
+Wraps both harnesses above into a single regression gate against the **currently-installed**
+app (no build/install step): records a fresh skirmish, pulls the `.rep`, replays it through
+`run-headless-replay.sh`, and asserts exit 0, no CRC-mismatch/desync in logcat, and a
+non-trivial amount of game time simulated. Prints `SMOKE TEST: PASS` / `SMOKE TEST: FAIL:
+<reason>`. Run it after any engine change as a quick "is the headless sim still correct?"
+check.
+
 ---
 
 ## Current Status
@@ -457,6 +470,7 @@ Adreno flagships (Vulkan 1.3 floor). Codebase findings that fed this plan:
 | `scripts/build/android/package-android-zh.sh` | Verify `libmain.so` artifact, embed .so's + SDL3 Java glue, `gradle assembleDebug`, optional install |
 | `scripts/build/android/push-assets-android.sh` | Push filtered retail assets + staged fonts to `/sdcard/GeneralsZH` |
 | `scripts/build/android/run-headless-replay.sh` | Push + launch `-headless -replay`, poll for completion, report PASS/FAIL |
+| `scripts/build/android/smoke-test-android.sh` | One-command regression gate: record a fresh skirmish, replay it, assert exit 0 + CRC-clean |
 | `scripts/get-assets.sh` | Steam-only asset fetch |
 | `scripts/build/ios/stage-fonts.sh` | Stage Liberation fonts under retail font names (shared with iOS) |
 | `CMakePresets.json` (`android-vulkan`) | Build preset (arm64-v8a, API 29+, SDL3 + OpenAL + FFmpeg) |
