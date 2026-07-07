@@ -13,6 +13,7 @@ rootlessly with [libadrenotools](https://github.com/bylaws/libadrenotools). RTS 
 controls: tap-select, drag-box, long-press right-click, two-finger pan, pinch zoom.
 
 ![Zero Hour skirmish on a Galaxy Tab S7+](docs/BUILD/screenshots/android-tab-s7plus-ingame.png)
+![Zero Hour skirmish gameplay on a Galaxy Tab S7+](docs/BUILD/screenshots/android-tab-s7plus-skirmish.gif)
 
 Ported in **under 24 hours** as a **human + AI collaboration** — possible only because
 [Ammaar Reshi's iOS/iPadOS port](https://github.com/ammaarreshi/Generals-Mac-iOS-iPad)
