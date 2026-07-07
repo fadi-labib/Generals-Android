@@ -127,6 +127,27 @@ extern Int GameMain();
 // bring-up later) blind. This pump reads the write end of a pipe that stdout and
 // stderr are dup2'd onto and forwards each line to __android_log_write under a
 // stable tag, so `adb logcat -s GeneralsX` shows the full engine output.
+// GeneralsX @feature FadiLabib 07/07/2026 Filter boot-time trace spam from logcat (GENERALSX_VERBOSE disables).
+// The [INI]/[SUBSYS]/[GX-ISSUE144] fprintf traces flood logcat for ~40 s per boot.
+// Returns true when a line is this high-volume boot trace and should be dropped.
+// Error-ish lines (err:/warn:/ERROR/FATAL, including DXVK's own) are ALWAYS kept so
+// real diagnostics can never be swallowed by the filter. Cheap, allocation-free:
+// skip leading whitespace, then a couple of prefix compares on the per-line path.
+static bool gxIsBootTraceSpam(const char *line)
+{
+	while (*line == ' ' || *line == '\t') ++line;
+	// Safety first: never drop error/warn lines even if a prefix somehow matches.
+	if (strncmp(line, "err:", 4) == 0 ||
+	    strncmp(line, "warn:", 5) == 0 ||
+	    strncmp(line, "ERROR", 5) == 0 ||
+	    strncmp(line, "FATAL", 5) == 0) {
+		return false;
+	}
+	return strncmp(line, "[INI]", 5) == 0
+	    || strncmp(line, "[SUBSYS]", 8) == 0
+	    || strncmp(line, "[GX-ISSUE144]", 13) == 0;
+}
+
 static void *gxLogcatPump(void *arg)
 {
 	const int readFd = (int)(intptr_t)arg;
@@ -134,12 +155,17 @@ static void *gxLogcatPump(void *arg)
 	size_t len = 0;
 	char chunk[512];
 	ssize_t n;
+	// GeneralsX @feature FadiLabib 07/07/2026 Read the verbose gate ONCE. Unset
+	// (default) = filter boot-trace spam; set = full firehose for debugging.
+	const bool verbose = (getenv("GENERALSX_VERBOSE") != nullptr);
 	while ((n = read(readFd, chunk, sizeof(chunk))) > 0) {
 		for (ssize_t i = 0; i < n; ++i) {
 			const char c = chunk[i];
 			if (c == '\n' || len == sizeof(line) - 1) {
 				line[len] = '\0';
-				__android_log_write(ANDROID_LOG_INFO, "GeneralsX", line);
+				if (verbose || !gxIsBootTraceSpam(line)) {
+					__android_log_write(ANDROID_LOG_INFO, "GeneralsX", line);
+				}
 				len = 0;
 				if (c != '\n') {
 					line[len++] = c;  // carry the char that overflowed the buffer
@@ -151,7 +177,9 @@ static void *gxLogcatPump(void *arg)
 	}
 	if (len > 0) {
 		line[len] = '\0';
-		__android_log_write(ANDROID_LOG_INFO, "GeneralsX", line);
+		if (verbose || !gxIsBootTraceSpam(line)) {
+			__android_log_write(ANDROID_LOG_INFO, "GeneralsX", line);
+		}
 	}
 	return nullptr;
 }
