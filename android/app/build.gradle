@@ -14,6 +14,18 @@ android {
     buildTypes {
         debug { debuggable true }
     }
+    // GeneralsX @build FadiLabib 07/07/2026 - adrenotools REQUIRES legacy packaging.
+    // With the modern (default) packaging Android leaves native libs compressed in
+    // the APK and nativeLibraryDir points inside the .apk, so adrenotools' hookLibDir
+    // (which must be a real directory holding libhook_impl.so / libmain_hook.so) is
+    // invalid and the Turnip hook silently fails (0 devices). useLegacyPackaging=true
+    // extracts all jniLibs to a real nativeLibraryDir on install. See
+    // adrenotools_open_libvulkan docs ("app MUST be packaged w/ useLegacyPackaging = true").
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     sourceSets.main {
         jniLibs.srcDirs = ['jniLibs']       // populated by package-android-zh.sh
         java.srcDirs = ['src/main/java', 'sdl-java']  // sdl-java copied from SDL3 source

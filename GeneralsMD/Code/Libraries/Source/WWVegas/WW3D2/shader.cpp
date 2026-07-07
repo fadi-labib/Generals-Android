@@ -1030,11 +1030,17 @@ void ShaderClass::Apply()
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_CULLMODE,Get_Cull_Mode() ? _PolygonCullMode : D3DCULL_NONE);
 
 	// NPATCHES
+	// GeneralsX @android FadiLabib 07/07/2026 - Windows-only. N-patch tessellation
+	// (ATI TruForm) does not exist in DXVK's D3D8/9; it ignores the state and logs
+	// "Unimplemented render state D3DRS_PATCHSEGMENTS" on EVERY call, which this
+	// per-shader-apply path turns into hundreds of log lines per second on device.
+#ifdef _WIN32
 	if (diff&ShaderClass::MASK_NPATCHENABLE) {
 		float level=1.0f;
 		if (Get_NPatch_Enable()) level=float(WW3D::Get_NPatches_Level());
 		DX8Wrapper::Set_DX8_Render_State(D3DRS_PATCHSEGMENTS,*((DWORD*)&level));
 	}
+#endif
 
 	// Enable/disable alpha test
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHATESTENABLE,BOOL(Get_Alpha_Test()));

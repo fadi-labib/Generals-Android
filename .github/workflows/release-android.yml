@@ -1,0 +1,108 @@
+name: Release Android APK
+
+# Builds the arm64 Android APK (debug-signed, sideload-only) with the same
+# scripts a dev uses locally (docs/BUILD/ANDROID.md), then:
+#   - on any run: uploads the APK as a workflow artifact
+#   - on an android-v* tag: publishes it as a GitHub Release
+# The APK contains NO game assets — players supply their own Zero Hour data.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['android-v*']
+
+permissions:
+  contents: write
+
+env:
+  NDK_VERSION: 27.2.12479018
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      # Only the two submodules the Android build needs (references/ holds more).
+      # cmake inits fbraz3-dxvk's nested submodules and applies the Android patch itself.
+      - name: Init required submodules
+        run: |
+          git submodule update --init --recursive references/libadrenotools
+          git submodule update --init references/fbraz3-dxvk
+
+      # vcpkg builds FFmpeg/OpenAL for arm64-android from source; the runner's
+      # 14 GB free disk is tight, so drop the biggest unused preinstalled toolchains.
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/node_modules /opt/hostedtoolcache/CodeQL
+
+      - name: Install host tools (meson, glslang for DXVK shader compile)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build glslang-tools nasm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install NDK r27 LTS
+        run: yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" 'platforms;android-34' 'build-tools;34.0.0' >/dev/null
+
+      # package-android-zh.sh drives a bare `gradle` (no wrapper checked in); pin 8.9
+      # to match AGP 8.5.2 rather than trust the runner's preinstalled version.
+      - name: Set up Gradle 8.9
+        run: |
+          curl -fsSL -o /tmp/gradle.zip https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          sudo unzip -q /tmp/gradle.zip -d /opt/gradle
+          echo "/opt/gradle/gradle-8.9/bin" >> "$GITHUB_PATH"
+
+      - name: vcpkg (full clone required by overlay triplet)
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh"
+
+      # vcpkg's default binary cache: first run builds arm64-android deps (~1-2 h),
+      # later runs restore them in minutes.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-android-${{ hashFiles('vcpkg.json', 'cmake/triplets/arm64-android.cmake') }}
+          restore-keys: vcpkg-android-
+
+      - name: Build libmain.so + DXVK + Turnip + adrenotools
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
+          export VCPKG_ROOT="$HOME/vcpkg"
+          ./scripts/build/android/fetch-turnip.sh
+          ./scripts/build/android/build-adrenotools.sh
+          cmake --preset android-vulkan
+          # dxvk_d3d8_install builds the DXVK external project and copies
+          # libdxvk_d3d8/d3d9.so to the build root where package-android-zh.sh expects them.
+          cmake --build build/android-vulkan --target z_generals dxvk_d3d8_install -j"$(nproc)"
+
+      - name: Package APK
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
+          export VCPKG_ROOT="$HOME/vcpkg"
+          ./scripts/build/android/package-android-zh.sh
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "GeneralsZH-Android-${GITHUB_REF_NAME//\//-}-debug.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GeneralsZH-Android-apk
+          path: GeneralsZH-Android-*.apk
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/android-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" GeneralsZH-Android-*.apk \
+            --title "Android $GITHUB_REF_NAME" \
+            --generate-notes \
+            --notes "Debug-signed APK for sideloading (arm64, Adreno GPUs — see README).
+
+          **You need your own Zero Hour game assets** — this APK ships none.
+          Push assets with \`scripts/build/android/push-assets-android.sh\`."

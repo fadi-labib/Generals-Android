@@ -245,6 +245,163 @@ Cflags: -I\${includedir}
   message(STATUS "DXVK source directory: ${DXVK_SOURCE_DIR}")
   message(STATUS "DXVK d3d8 library:     ${DXVK_D3D8_LIB}")
 
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Android" OR ANDROID)
+  # Android: cross-build DXVK 2.6 (d3d8 + d3d9) for arm64-v8a with Meson + the NDK
+  # clang toolchain. Analogous to the iOS/macOS fork build but simpler: native
+  # Vulkan (no MoltenVK), .so outputs (not .dylib), and the NDK's per-API clang
+  # wrappers drive the cross-compile via a generated meson cross file. The two
+  # arm64 .so's package into jniLibs/arm64-v8a in Task 3.
+  # GeneralsX @build FadiLabib 06/07/2026 - Phase 3 Android renderer (Task P3-2)
+  find_program(MESON_EXECUTABLE meson)
+  find_program(NINJA_EXECUTABLE ninja)
+  # DXVK compiles its shaders to SPIR-V at build time with a *host* glslang.
+  find_program(GLSLANG_EXECUTABLE NAMES glslangValidator glslang)
+
+  if(NOT MESON_EXECUTABLE)
+    message(FATAL_ERROR "DXVK Android build requires meson (apt install meson / pip install meson)")
+  endif()
+  if(NOT NINJA_EXECUTABLE)
+    message(FATAL_ERROR "DXVK Android build requires ninja (apt install ninja-build)")
+  endif()
+  if(NOT GLSLANG_EXECUTABLE)
+    message(FATAL_ERROR "DXVK Android build requires a host glslang/glslangValidator (apt install glslang-tools)")
+  endif()
+
+  # Resolve the NDK toolchain bin dir: the per-API clang wrappers
+  # (aarch64-linux-android29-clang[++]) already embed -target and --sysroot, plus
+  # llvm-ar / llvm-strip. Prefer $ANDROID_NDK_HOME, fall back to CMAKE_ANDROID_NDK
+  # (set by android.toolchain.cmake).
+  set(DXVK_ANDROID_NDK "$ENV{ANDROID_NDK_HOME}")
+  if(NOT DXVK_ANDROID_NDK)
+    set(DXVK_ANDROID_NDK "${CMAKE_ANDROID_NDK}")
+  endif()
+  if(NOT DXVK_ANDROID_NDK OR NOT EXISTS "${DXVK_ANDROID_NDK}")
+    message(FATAL_ERROR "DXVK Android build requires ANDROID_NDK_HOME or CMAKE_ANDROID_NDK to point at an NDK")
+  endif()
+  file(GLOB DXVK_NDK_PREBUILT_DIRS "${DXVK_ANDROID_NDK}/toolchains/llvm/prebuilt/*")
+  if(NOT DXVK_NDK_PREBUILT_DIRS)
+    message(FATAL_ERROR "DXVK Android build: no prebuilt toolchain under ${DXVK_ANDROID_NDK}/toolchains/llvm/prebuilt")
+  endif()
+  list(GET DXVK_NDK_PREBUILT_DIRS 0 DXVK_NDK_HOST_DIR)
+  set(ANDROID_NDK_BIN "${DXVK_NDK_HOST_DIR}/bin")
+  if(NOT EXISTS "${ANDROID_NDK_BIN}/aarch64-linux-android29-clang")
+    message(FATAL_ERROR "DXVK Android build: NDK clang wrapper not found at ${ANDROID_NDK_BIN}/aarch64-linux-android29-clang")
+  endif()
+  # @GLSLANG@ substituted into the cross file's [binaries] glslang entry.
+  set(GLSLANG "${GLSLANG_EXECUTABLE}")
+  message(STATUS "Building DXVK ${DXVK_VERSION} for Android/arm64-v8a with Meson (NDK bin: ${ANDROID_NDK_BIN}, glslang: ${GLSLANG})")
+
+  include(ExternalProject)
+
+  # Android must build from the local fbraz3 fork: it carries the macOS/iOS DXVK
+  # work and receives Patches/dxvk-android.patch. A remote clone cannot be patched
+  # idempotently here, so require the submodule (never build an unpatched tree).
+  set(DXVK_LOCAL_FORK_DIR "${CMAKE_SOURCE_DIR}/references/fbraz3-dxvk")
+  if(NOT EXISTS "${DXVK_LOCAL_FORK_DIR}/.git")
+    message(FATAL_ERROR "Android DXVK requires the local fork submodule. Run: git submodule update --init --recursive references/fbraz3-dxvk")
+  endif()
+  set(DXVK_SOURCE_DIR "${DXVK_LOCAL_FORK_DIR}")
+  message(STATUS "DXVK Android build: using local fork source at ${DXVK_SOURCE_DIR}")
+
+  # The fork's nested submodules (Vulkan-Headers, SPIRV-Headers, mingw-directx-headers,
+  # libdisplay-info) must be present for meson. Initialising gitlinks is build setup,
+  # not a source edit. Non-fatal: if this fails offline the build surfaces missing headers.
+  execute_process(
+    COMMAND git -C "${DXVK_LOCAL_FORK_DIR}" submodule update --init --recursive
+    RESULT_VARIABLE DXVK_ANDROID_SUBMOD_RESULT)
+  if(NOT DXVK_ANDROID_SUBMOD_RESULT EQUAL 0)
+    message(WARNING "DXVK Android: 'git submodule update --init --recursive' on the fork returned ${DXVK_ANDROID_SUBMOD_RESULT}; nested submodules may be missing")
+  endif()
+
+  # Apply Patches/dxvk-android.patch idempotently: skip when the working tree
+  # already carries it (reverse-check passes), fail the configure otherwise so an
+  # unpatched DXVK (portability-subset use sites unguarded) can never build silently.
+  execute_process(
+    COMMAND git -C "${DXVK_LOCAL_FORK_DIR}" apply --reverse --check "${CMAKE_SOURCE_DIR}/Patches/dxvk-android.patch"
+    RESULT_VARIABLE DXVK_ANDROID_PATCH_ALREADY_APPLIED
+    ERROR_QUIET)
+  if(NOT DXVK_ANDROID_PATCH_ALREADY_APPLIED EQUAL 0)
+    execute_process(
+      COMMAND git -C "${DXVK_LOCAL_FORK_DIR}" apply "${CMAKE_SOURCE_DIR}/Patches/dxvk-android.patch"
+      RESULT_VARIABLE DXVK_ANDROID_PATCH_RESULT)
+    if(NOT DXVK_ANDROID_PATCH_RESULT EQUAL 0)
+      message(FATAL_ERROR "Failed to apply Patches/dxvk-android.patch to references/fbraz3-dxvk — the Android DXVK build requires it.")
+    endif()
+    message(STATUS "DXVK Android: applied Patches/dxvk-android.patch")
+  else()
+    message(STATUS "DXVK Android: Patches/dxvk-android.patch already applied")
+  endif()
+
+  # Generate the meson cross file from the template, filling in the NDK bin dir
+  # and the host glslang. The wrappers embed -target/--sysroot, so no arch/sysroot
+  # flags are needed in [built-in options] (unlike the iOS file).
+  configure_file(${CMAKE_SOURCE_DIR}/cmake/meson-arm64-android-cross.ini.in
+                 ${CMAKE_BINARY_DIR}/meson-arm64-android-cross.ini @ONLY)
+
+  # Generate a pkg-config for the in-tree (FetchContent) Android SDL3 so meson's
+  # dependency('SDL3') resolves to it. File name MUST be capital SDL3.pc — Linux is
+  # case-sensitive and dependency('SDL3') looks for SDL3.pc. Without it meson silently
+  # falls back to a system SDL2 and compiles the WSI as Sdl2WsiDriver.
+  set(DXVK_SDL3_PC_DIR "${CMAKE_BINARY_DIR}/sdl3-pkgconfig")
+  file(WRITE "${DXVK_SDL3_PC_DIR}/SDL3.pc"
+"prefix=${CMAKE_BINARY_DIR}/_deps
+libdir=\${prefix}/sdl3-build
+includedir=\${prefix}/sdl3-src/include
+
+Name: SDL3
+Description: Simple DirectMedia Layer (in-tree FetchContent build, Android arm64)
+Version: 3.4.2
+Libs: -L\${libdir} -lSDL3
+Cflags: -I\${includedir}
+")
+  if(DEFINED ENV{PKG_CONFIG_PATH})
+    set(DXVK_PKG_CONFIG_PATH "${DXVK_SDL3_PC_DIR}:$ENV{PKG_CONFIG_PATH}")
+  else()
+    set(DXVK_PKG_CONFIG_PATH "${DXVK_SDL3_PC_DIR}")
+  endif()
+  set(DXVK_PKG_CONFIG_ENV "PKG_CONFIG_PATH=${DXVK_PKG_CONFIG_PATH}")
+
+  set(DXVK_BUILD_DIR "${CMAKE_BINARY_DIR}/_deps/dxvk-build-android")
+  # meson emits plain libdxvk_d3d8.so / libdxvk_d3d9.so targets (versioned .so.0.*
+  # + symlinks land alongside). d3d8 links d3d9 via a bare-name NEEDED.
+  set(DXVK_D3D8_LIB "${DXVK_BUILD_DIR}/src/d3d8/libdxvk_d3d8.so")
+  set(DXVK_D3D9_LIB "${DXVK_BUILD_DIR}/src/d3d9/libdxvk_d3d9.so")
+
+  ExternalProject_Add(dxvk_android_build
+    SOURCE_DIR        ${DXVK_SOURCE_DIR}
+    BINARY_DIR        ${DXVK_BUILD_DIR}
+    DOWNLOAD_COMMAND  ""
+    UPDATE_COMMAND    ""
+    PATCH_COMMAND     ""
+    CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "${DXVK_PKG_CONFIG_ENV}" ${MESON_EXECUTABLE} setup ${DXVK_BUILD_DIR} ${DXVK_SOURCE_DIR} --cross-file ${CMAKE_BINARY_DIR}/meson-arm64-android-cross.ini -Ddxvk_native_wsi=sdl3 --buildtype=release --reconfigure
+    BUILD_COMMAND     ${NINJA_EXECUTABLE} -C ${DXVK_BUILD_DIR} src/d3d9/libdxvk_d3d9.so src/d3d8/libdxvk_d3d8.so
+    INSTALL_COMMAND   ""
+    UPDATE_DISCONNECTED TRUE
+  )
+
+  # Copy the built arm64 .so's to a known location in the build dir so Task 3's
+  # packaging (jniLibs/arm64-v8a) can find them. Plain names — Android's linker
+  # resolves the bare-name d3d8->d3d9 NEEDED from nativeLibraryDir, no symlinks needed.
+  add_custom_command(
+    OUTPUT  "${CMAKE_BINARY_DIR}/libdxvk_d3d9.so"
+            "${CMAKE_BINARY_DIR}/libdxvk_d3d8.so"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DXVK_D3D9_LIB} "${CMAKE_BINARY_DIR}/libdxvk_d3d9.so"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DXVK_D3D8_LIB} "${CMAKE_BINARY_DIR}/libdxvk_d3d8.so"
+    DEPENDS dxvk_android_build
+    COMMENT "Installing libdxvk_d3d8 + libdxvk_d3d9 (arm64) to build directory"
+  )
+  add_custom_target(dxvk_d3d8_install ALL
+    DEPENDS "${CMAKE_BINARY_DIR}/libdxvk_d3d8.so"
+            "${CMAKE_BINARY_DIR}/libdxvk_d3d9.so"
+  )
+
+  # Export the fork header layout (include/native/...) — CompatLib consumes these
+  # like the macOS build. CACHE PATH survives auto-regeneration.
+  set(DXVK_INCLUDE_DIR "${DXVK_SOURCE_DIR}/include/native" CACHE PATH "DXVK native headers")
+  set(dxvk_SOURCE_DIR "${DXVK_SOURCE_DIR}" CACHE PATH "DXVK source directory (Android)")
+  message(STATUS "DXVK source directory: ${DXVK_SOURCE_DIR}")
+  message(STATUS "DXVK d3d8 library:     ${DXVK_D3D8_LIB}")
+
 else()
   # Linux: Fetch pre-built DXVK native binary for DirectX→Vulkan translation
   # Native 32-bit and 64-bit Linux binaries (.so)

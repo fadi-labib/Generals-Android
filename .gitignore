@@ -97,3 +97,4 @@ logs_*.zip
 ios/build/
 ios/GeneralsXZH.xcodeproj/
 .superpowers/
+GeneralsReplays/

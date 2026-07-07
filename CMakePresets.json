@@ -285,7 +285,7 @@
             "inherits": "default-vcpkg",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/${presetName}",
-            "description": "Android port: arm64-v8a, API 29+, game built as libmain.so for SDL3's SDLActivity. Requires ANDROID_NDK_HOME (r27 LTS).",
+            "description": "Android port: arm64-v8a, API 29+, game built as libmain.so for SDL3's SDLActivity. Requires ANDROID_NDK_HOME (r27 LTS). ANDROID_STL=c++_shared (GeneralsX @build FadiLabib 06/07/2026) so libmain.so and DXVK's libdxvk_d3d8/d3d9.so share one libc++_shared.so — C++ exceptions/RTTI (DxvkError) then cross the .so boundary instead of being swallowed by catch(...).",
             "cacheVariables": {
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo",
@@ -294,6 +294,7 @@
                 "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
                 "ANDROID_ABI": "arm64-v8a",
                 "ANDROID_PLATFORM": "android-29",
+                "ANDROID_STL": "c++_shared",
                 "SAGE_USE_DX8": "OFF",
                 "SAGE_USE_SDL3": "ON",
                 "SAGE_USE_OPENAL": "ON",

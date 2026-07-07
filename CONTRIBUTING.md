@@ -12,6 +12,15 @@ Prefer opening fewer high quality Pull Requests over many low quality ones. Prio
 
 Creating changes with LLM generated code is generally allowed. The author is responsible for verifying that all generated code is human readable, maintainable and logically correct. Furthermore, all generated code needs to be tested and verified. The author is not allowed to outsource the polishing of the generated code to the human code reviewers. In a Pull Request, generated code needs to be announced as such and to what extent it was polished by human intervention.
 
+### AI-first workflow
+
+This repository is set up to be worked on by AI coding agents as first-class contributors:
+
+- **Agents start at [AGENTS.md](AGENTS.md)** — architecture, entry points, and required context. For the Android port specifically, [docs/BUILD/ANDROID_HANDOVER.md](docs/BUILD/ANDROID_HANDOVER.md) is the complete mental model (written agent-to-agent).
+- **Claude Code users** can onboard with full project context via the shared onboarding guide: run `claude` and open https://claude.ai/claude-code/onboard/03vfXGVR2J--
+- **Issues labeled `ai-ready`** carry enough context (file paths, doc references, acceptance criteria) for an agent to work them without further clarification.
+- The PR template's **AI assistance disclosure** and **verification evidence** sections are mandatory — an agent (or its operator) must show what was built and run, not assert it. On-device claims require the regression checklist.
+
 ### New code contributors and AI generated code
 
 New contributors are discouraged from submitting Pull Requests with thousands of lines changed or added with the help of LLMs, because human code reviewers cannot attend such volumes at the risk of wasting precious time with potentially poorly generated code.

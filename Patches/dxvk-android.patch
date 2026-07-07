@@ -1,0 +1,244 @@
+diff --git a/meson.build b/meson.build
+index 26afed45..4113407a 100644
+--- a/meson.build
++++ b/meson.build
+@@ -166,10 +166,13 @@ else
+   dxvk_name_prefix = 'dxvk_'
+   dxvk_pkg_prefix = 'dxvk-'
+ 
+-  link_args += [
+-    '-static-libgcc',
+-    '-static-libstdc++',
+-  ]
++  # GeneralsX @build FadiLabib 06/07/2026 - Android: do NOT statically link
++  # libstdc++. A DXVK .so that embeds its own libc++/libc++abi gets its own
++  # type_info, so a DxvkError thrown here would not match std::exception in
++  # libmain.so and the real Vulkan error is swallowed by catch(...). Without
++  # -static-libstdc++ the NDK clang links the shared libc++_shared.so (which
++  # libmain.so also uses via ANDROID_STL=c++_shared), letting exceptions/RTTI
++  # cross the .so boundary. macOS/iOS keep static (this patch is Android-only).
+ endif
+ 
+ dxvk_include_path = include_directories(dxvk_include_dirs)
+diff --git a/src/dxvk/dxvk_adapter.cpp b/src/dxvk/dxvk_adapter.cpp
+index 981b0003..f7c2b12b 100644
+--- a/src/dxvk/dxvk_adapter.cpp
++++ b/src/dxvk/dxvk_adapter.cpp
+@@ -340,10 +340,15 @@ namespace dxvk {
+     // macOS/MoltenVK: VK_KHR_portability_subset MUST be enabled when the device supports it.
+     // Without it, vkCreateDevice rejects valid features (robustBufferAccess2, nullDescriptor, etc.)
+     // with VK_ERROR_FEATURE_NOT_PRESENT due to MoltenVK's portability subset enforcement.
++    // GeneralsX @android FadiLabib 06/07/2026 - Portability subset is a MoltenVK-only concept;
++    // its VK_ENABLE_BETA_EXTENSIONS types only exist under __APPLE__. Android runs real Vulkan
++    // (Turnip / stock Adreno) with no portability subset, so guard the whole block out there.
++#ifdef __APPLE__
+     const bool hasPortabilitySubset =
+       m_deviceExtensions.supports(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME) != 0u;
+     if (hasPortabilitySubset)
+       extensionsEnabled.add(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
++#endif
+ 
+     DxvkNameList extensionNameList = extensionsEnabled.toNameList();
+ 
+@@ -520,6 +525,8 @@ namespace dxvk {
+     // VkPhysicalDevicePortabilitySubsetFeaturesKHR in VkDeviceCreateInfo.pNext set to
+     // device-queried values. Without this, MoltenVK may reject features it reported as
+     // supported in vkGetPhysicalDeviceFeatures2 (e.g. robustBufferAccess2, nullDescriptor).
++    // GeneralsX @android FadiLabib 06/07/2026 - __APPLE__-only (see block above).
++#ifdef __APPLE__
+     VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityFeatures = {
+       VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR };
+     if (hasPortabilitySubset) {
+@@ -528,6 +535,7 @@ namespace dxvk {
+       m_vki->vkGetPhysicalDeviceFeatures2(m_handle, &query);
+       portabilityFeatures.pNext = std::exchange(enabledFeatures.core.pNext, &portabilityFeatures);
+     }
++#endif
+ 
+     // Log feature support info an extension list
+     Logger::info(str::format("Device properties:"
+diff --git a/src/vulkan/vulkan_loader.cpp b/src/vulkan/vulkan_loader.cpp
+index 518efcb1..3ca3e70f 100644
+--- a/src/vulkan/vulkan_loader.cpp
++++ b/src/vulkan/vulkan_loader.cpp
+@@ -7,9 +7,85 @@
+ #include "../util/util_string.h"
+ #include "../util/util_win32_compat.h"
+ 
++#if defined(__ANDROID__)
++// GeneralsX @android FadiLabib 07/07/2026 - Turnip-via-adrenotools loader.
++// The stock Qualcomm driver on the Adreno 650 only reports Vulkan 1.1, which
++// DXVK 2.6 rejects ("Skipping Vulkan 1.1 adapter" -> "No adapters found"). We
++// instead load a bundled Mesa Turnip driver (Vulkan 1.3+) through libadrenotools,
++// which hooks the Android linker namespace so libvulkan.so opens Turnip instead of
++// the vendor driver. adrenotools is dlopen'd (not linked) to keep the meson build
++// untouched; the app (SDL3Main.cpp) sets the three env vars below before we run.
++#include <cstdlib>
++#include <dlfcn.h>
++
++namespace {
++  // Mirror of adrenotools/priv.h ADRENOTOOLS_DRIVER_CUSTOM (bit 0). Redeclared here
++  // so DXVK needs no adrenotools headers at compile time.
++  constexpr int kAdrenotoolsDriverCustom = 1 << 0;
++  using PFN_adrenotools_open_libvulkan = void* (*)(
++    int dlopenMode, int featureFlags, const char* tmpLibDir, const char* hookLibDir,
++    const char* customDriverDir, const char* customDriverName, const char* fileRedirectDir,
++    void** userMappingHandle);
++
++  // Returns a handle to a libvulkan routed into the bundled Turnip driver, or
++  // nullptr if the env is not configured / adrenotools fails (caller falls back
++  // to the stock libvulkan.so). hookLibDir MUST be the APK nativeLibraryDir (holds
++  // libhook_impl.so / libmain_hook.so); customDriverDir MUST be a private, non-sdcard
++  // dir (the app's internal files dir) holding the copied Turnip .so.
++  void* dxvkAndroidOpenTurnip() {
++    const char* hookLibDir     = std::getenv("GENERALSX_ADRENOTOOLS_HOOK_DIR");
++    const char* customDriverDir  = std::getenv("GENERALSX_TURNIP_DRIVER_DIR");
++    const char* customDriverName = std::getenv("GENERALSX_TURNIP_DRIVER_NAME");
++    if (!hookLibDir || !customDriverDir || !customDriverName) {
++      dxvk::Logger::warn("Vulkan: adrenotools env not set (GENERALSX_ADRENOTOOLS_HOOK_DIR/"
++                         "GENERALSX_TURNIP_DRIVER_DIR/GENERALSX_TURNIP_DRIVER_NAME); using stock libvulkan.so");
++      return nullptr;
++    }
++
++    void* adreno = dlopen("libadrenotools.so", RTLD_NOW | RTLD_LOCAL);
++    if (!adreno) {
++      dxvk::Logger::warn(dxvk::str::format("Vulkan: dlopen(libadrenotools.so) failed: ", dlerror()));
++      return nullptr;
++    }
++
++    auto openLibvulkan = reinterpret_cast<PFN_adrenotools_open_libvulkan>(
++      dlsym(adreno, "adrenotools_open_libvulkan"));
++    if (!openLibvulkan) {
++      dxvk::Logger::warn("Vulkan: adrenotools_open_libvulkan not found in libadrenotools.so");
++      return nullptr;
++    }
++
++    dxvk::Logger::info(dxvk::str::format("Vulkan: opening Turnip via adrenotools (hookLibDir=", hookLibDir,
++                                         " driverDir=", customDriverDir, " driver=", customDriverName, ")"));
++    void* handle = openLibvulkan(RTLD_NOW | RTLD_LOCAL, kAdrenotoolsDriverCustom,
++                                 nullptr /*tmpLibDir (memfd on API>=29)*/, hookLibDir,
++                                 customDriverDir, customDriverName, nullptr /*fileRedirectDir*/,
++                                 nullptr /*userMappingHandle*/);
++    if (!handle)
++      dxvk::Logger::warn("Vulkan: adrenotools_open_libvulkan returned null (Turnip not loaded); using stock libvulkan.so");
++    return handle;
++  }
++}
++#endif
++
+ namespace dxvk::vk {
+ 
+   static std::pair<HMODULE, PFN_vkGetInstanceProcAddr> loadVulkanLibrary() {
++#if defined(__ANDROID__)
++    // GeneralsX @android FadiLabib 07/07/2026 - Prefer the bundled Turnip driver
++    // (Vulkan 1.3) via adrenotools. Falls through to the stock libvulkan.so list
++    // below if the driver package or hooks are missing / adrenotools fails.
++    if (HMODULE turnip = reinterpret_cast<HMODULE>(dxvkAndroidOpenTurnip())) {
++      auto proc = GetProcAddress(turnip, "vkGetInstanceProcAddr");
++      if (proc) {
++        Logger::info(str::format("Vulkan: Found vkGetInstanceProcAddr in adrenotools/Turnip libvulkan @ 0x",
++                                 std::hex, reinterpret_cast<uintptr_t>(proc)));
++        return std::make_pair(turnip, reinterpret_cast<PFN_vkGetInstanceProcAddr>(proc));
++      }
++      Logger::warn("Vulkan: adrenotools handle has no vkGetInstanceProcAddr; falling back to stock libvulkan.so");
++      FreeLibrary(turnip);
++    }
++#endif
+ #ifdef _WIN32
+     static const std::array<const char*, 2> dllNames = {{
+       "winevulkan.dll",
+diff --git a/src/wsi/sdl3/wsi_platform_sdl3.cpp b/src/wsi/sdl3/wsi_platform_sdl3.cpp
+index 9975cdac..ba8e058d 100644
+--- a/src/wsi/sdl3/wsi_platform_sdl3.cpp
++++ b/src/wsi/sdl3/wsi_platform_sdl3.cpp
+@@ -15,6 +15,12 @@ namespace dxvk::wsi {
+         "SDL3.dll"
+ #elif defined(__APPLE__)
+         "libSDL3.0.dylib"
++// GeneralsX @android FadiLabib 07/07/2026 - Android strips the version suffix:
++// jniLibs ship an UNVERSIONED libSDL3.so (package script removes .so.*), so the
++// versioned libSDL3.so.0 dlopen fails ("Failed to load SDL3 DLL"). Load the
++// unversioned soname on Android.
++#elif defined(__ANDROID__)
++        "libSDL3.so"
+ #else
+         "libSDL3.so.0"
+ #endif
+diff --git a/src/wsi/sdl3/wsi_platform_sdl3_funcs.h b/src/wsi/sdl3/wsi_platform_sdl3_funcs.h
+index 624c2193..f7095856 100644
+--- a/src/wsi/sdl3/wsi_platform_sdl3_funcs.h
++++ b/src/wsi/sdl3/wsi_platform_sdl3_funcs.h
+@@ -16,6 +16,11 @@ SDL_PROC(bool, SDL_SetWindowFullscreenMode, (SDL_Window*, const SDL_DisplayMode*
+ SDL_PROC(char const* const*, SDL_Vulkan_GetInstanceExtensions, (Uint32*))
+ SDL_PROC(bool, SDL_Vulkan_CreateSurface, (SDL_Window*, VkInstance, const VkAllocationCallbacks*, VkSurfaceKHR*))
+ SDL_PROC(bool, SDL_Vulkan_LoadLibrary, (const char*))
++// GeneralsX @android FadiLabib 07/07/2026 - Android surface creation goes through
++// DXVK's own (Turnip/adrenotools) Vulkan loader, not SDL's separately-loaded stock
++// libvulkan (see createSurface). We fetch the ANativeWindow* from these SDL props.
++SDL_PROC(SDL_PropertiesID, SDL_GetWindowProperties, (SDL_Window*))
++SDL_PROC(void*, SDL_GetPointerProperty, (SDL_PropertiesID, const char*, void*))
+ SDL_PROC(void, SDL_free, (void*))
+ SDL_PROC(bool, SDL_InitSubSystem, (SDL_InitFlags))
+ SDL_PROC(void, SDL_QuitSubSystem, (SDL_InitFlags))
+diff --git a/src/wsi/sdl3/wsi_window_sdl3.cpp b/src/wsi/sdl3/wsi_window_sdl3.cpp
+index 10fca478..7c8fd3f3 100644
+--- a/src/wsi/sdl3/wsi_window_sdl3.cpp
++++ b/src/wsi/sdl3/wsi_window_sdl3.cpp
+@@ -1,5 +1,12 @@
+ #if defined(DXVK_WSI_SDL3)
+ 
++// GeneralsX @android FadiLabib 07/07/2026 - Pull in VkAndroidSurfaceCreateInfoKHR /
++// PFN_vkCreateAndroidSurfaceKHR. MUST precede any <vulkan/vulkan.h> include so the
++// Android WSI platform types are declared (createSurface uses them below).
++#if defined(__ANDROID__)
++#define VK_USE_PLATFORM_ANDROID_KHR 1
++#endif
++
+ #include "../wsi_window.h"
+ 
+ #include "native/wsi/native_sdl3.h"
+@@ -168,8 +175,44 @@ namespace dxvk::wsi {
+           VkSurfaceKHR*             pSurface) {
+     SDL_Window* window = fromHwnd(hWindow);
+ 
++#if defined(__ANDROID__)
++    // GeneralsX @android FadiLabib 07/07/2026 - Create the surface via DXVK's OWN
++    // Vulkan loader (Turnip through adrenotools), NOT SDL_Vulkan_CreateSurface.
++    // SDL loaded a SEPARATE, stock libvulkan (SDL_Vulkan_LoadLibrary in
++    // getInstanceExtensions); handing our Turnip-loader VkInstance to SDL's stock
++    // loader mismatches the instance dispatch and fails with
++    // VK_ERROR_OUT_OF_HOST_MEMORY. vkCreateAndroidSurfaceKHR is a loader/WSI entry,
++    // so resolving it from the same loader that owns `instance` keeps everything in
++    // one loader. We only need the ANativeWindow* from SDL (a plain handle).
++    SDL_PropertiesID props = SDL_GetWindowProperties(window);
++    if (props == 0) {
++      Logger::err("SDL3 WSI (Android): SDL_GetWindowProperties failed");
++      return VK_ERROR_OUT_OF_HOST_MEMORY;
++    }
++    // SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER == "SDL.window.android.window".
++    void* nativeWindow = SDL_GetPointerProperty(props, "SDL.window.android.window", nullptr);
++    if (nativeWindow == nullptr) {
++      Logger::err("SDL3 WSI (Android): no ANativeWindow on SDL window");
++      return VK_ERROR_OUT_OF_HOST_MEMORY;
++    }
++
++    auto pfnCreateAndroidSurface = reinterpret_cast<PFN_vkCreateAndroidSurfaceKHR>(
++      pfnVkGetInstanceProcAddr(instance, "vkCreateAndroidSurfaceKHR"));
++    if (pfnCreateAndroidSurface == nullptr) {
++      Logger::err("SDL3 WSI (Android): vkCreateAndroidSurfaceKHR not found in the DXVK Vulkan loader");
++      return VK_ERROR_EXTENSION_NOT_PRESENT;
++    }
++
++    VkAndroidSurfaceCreateInfoKHR surfaceInfo = { VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR };
++    surfaceInfo.window = reinterpret_cast<ANativeWindow*>(nativeWindow);
++    VkResult vr = pfnCreateAndroidSurface(instance, &surfaceInfo, nullptr, pSurface);
++    if (vr != VK_SUCCESS)
++      Logger::err(str::format("SDL3 WSI (Android): vkCreateAndroidSurfaceKHR failed: ", vr));
++    return vr;
++#else
+     return SDL_Vulkan_CreateSurface(window, instance, nullptr, pSurface)
+       ? VK_SUCCESS : VK_ERROR_OUT_OF_HOST_MEMORY;
++#endif
+   }
+ 
+ }

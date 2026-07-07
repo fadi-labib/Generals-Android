@@ -1,9 +1,19 @@
 # GeneralsX - Android Build Instructions (arm64-v8a)
 
-> **Status: Phases 0-2 complete and verified on real hardware.** The engine builds, packages,
-> installs, and runs its full non-graphics simulation loop (filesystem, .big archives, INI,
-> game logic, deterministic sim) on-device. Rendering (Phase 3+) is not wired up yet — see
-> [Current Status](#current-status) and the [renderer-route decision](#renderer-route-decision).
+> **Status: THE GAME RENDERS AND PLAYS.** As of 2026-07-07 the full game runs on a Galaxy
+> Tab S7+ (Adreno 650): main menu with animated shell map, skirmish lobby, and a live
+> skirmish match at native 2800×1752, ~30-60 FPS — via DXVK (D3D8→Vulkan) on a bundled
+> Mesa Turnip driver loaded rootlessly through libadrenotools. See
+> [Current Status](#current-status), the [rendering pipeline](#rendering-pipeline-phase-3),
+> and [Known issues & remaining work](#known-issues--remaining-work).
+
+![Skirmish match on Galaxy Tab S7+](screenshots/android-tab-s7plus-ingame.png)
+
+> **Continuing this work?** Read [ANDROID_HANDOVER.md](ANDROID_HANDOVER.md) first — the
+> mental model, debugging toolbox, traps, and prioritized next steps from the sessions
+> that got the port here.
+> Touch controls (gestures, state machine, design rationale, debugging):
+> [docs/port/TOUCH_CONTROLS.md](../port/TOUCH_CONTROLS.md).
 
 ## Prerequisites
 
@@ -96,6 +106,16 @@ git clone https://github.com/fbraz3/GeneralsX.git
 cd GeneralsX
 ```
 
+### Submodules (required for the renderer)
+
+```bash
+git submodule update --init --recursive references/fbraz3-dxvk references/libadrenotools
+```
+
+`references/fbraz3-dxvk` is the DXVK fork that gets `Patches/dxvk-android.patch` applied at
+build time (Turnip loader + Android WSI surface path); `references/libadrenotools` is the
+rootless custom-Vulkan-driver loader.
+
 ### Configure and Build
 
 ```bash
@@ -104,7 +124,19 @@ cmake --build build/android-vulkan --target z_generals -j$(nproc --ignore=1)
 ```
 
 The `android-vulkan` preset (`CMakePresets.json`) builds arm64-v8a, API 29+, against the
-`arm64-android` overlay vcpkg triplet, with SDL3 + OpenAL + FFmpeg enabled.
+`arm64-android` overlay vcpkg triplet, with SDL3 + OpenAL + FFmpeg enabled. The DXVK
+cross-build (meson, `libdxvk_d3d8.so`/`libdxvk_d3d9.so`) is driven from `cmake/dx8.cmake` as
+part of this build; it applies `Patches/dxvk-android.patch` idempotently to the submodule.
+
+### Renderer support libraries (one-time per checkout)
+
+```bash
+./scripts/build/android/build-adrenotools.sh   # libadrenotools + linker-namespace hooks
+./scripts/build/android/fetch-turnip.sh        # pinned Mesa Turnip ADPKG (Vulkan 1.3, MIT)
+```
+
+Both outputs are packaged into the APK by `package-android-zh.sh`; nothing binary is
+committed to git.
 
 The game builds as a **shared library** (SDL3's Android model runs the game inside
 `SDLActivity`, not as a standalone executable):
@@ -291,7 +323,8 @@ check.
 | Phase 0 | Renderer route research + decision | ✅ Done — `require-turnip` (see [renderer-route decision](#renderer-route-decision)) |
 | Phase 1 | Build system, Gradle shell app, packaging, app launches | ✅ Done — app runs `SDL_main` on-device (logcat: `Running main function SDL_main from library .../libmain.so`) |
 | Phase 2 | Headless verification (non-graphics engine) | ✅ Done — Android-recorded AI-vs-AI skirmish replay (Maps/Whiteout.map, 1500 frames / 00:50 game time) plays back to exit 0, no CRC mismatch |
-| Phase 3+ | Renderer bring-up (Turnip bundling), touch/lifecycle, audio/video, parity polish | ⏳ Next — to be planned from the renderer-route decision |
+| Phase 3 | Renderer bring-up (DXVK cross-build, Turnip bundling, WSI, crash fixes) | ✅ **Done — the game renders and plays** (2026-07-07, Tab S7+/Adreno 650): main menu + shell map, skirmish lobby, live match, ~30-60 FPS at 2800×1752, driven end-to-end by touch |
+| Phase 4+ | Touch controls polish, lifecycle (pause/resume), audio verification, perf, non-Adreno devices | ⏳ Next — see [Known issues & remaining work](#known-issues--remaining-work) |
 
 ### Gate evidence
 
@@ -309,6 +342,113 @@ check.
 |---|---|---|---|---|
 | Galaxy S22 (SM-S908B, Exynos) | Xclipse 920 | 1.3 | FALSE | No BCn, no Turnip (not Adreno) — asset-transcode fallback territory |
 | Galaxy Tab S7+ (SM-T970) | Snapdragon 865 / Adreno 650, Android 13 | 1.3 | **FALSE on stock driver** | Empirically corrects the research doc's `[CLAIM]` that Adreno 650 stock exposes BCn — it does not. Makes `require-turnip` **necessary**, not optional, for this device. Primary Phase 3 target (Adreno 650 = Turnip's rock-solid 6xx tier). |
+
+---
+
+## Rendering Pipeline (Phase 3)
+
+```
+Game (DirectX 8 calls)
+  → libdxvk_d3d8.so / libdxvk_d3d9.so        (DXVK 2.6 fork, meson cross-build,
+                                               Patches/dxvk-android.patch)
+  → Vulkan 1.3 via Mesa Turnip               (bundled libvulkan_freedreno.so,
+                                               loaded rootlessly by libadrenotools —
+                                               stock Adreno 650 driver only exposes 1.1)
+  → VK_KHR_android_surface → ANativeWindow   (SDL3 SurfaceView)
+```
+
+Key mechanics, each of which was a hard-won lesson:
+
+1. **Turnip via adrenotools** (`SDL3Main.cpp: gxSetupTurnipDriver` + the patch's
+   `vulkan_loader.cpp`): the app stages the bundled Turnip .so into its private files dir and
+   exports `GENERALSX_ADRENOTOOLS_*` env vars; DXVK's Vulkan loader dlopens
+   `adrenotools_open_libvulkan` instead of the stock `libvulkan.so`.
+2. **One Vulkan loader, not two** (patch's `wsi_window_sdl3.cpp`): SDL loads its own copy of
+   the system Vulkan loader, so `SDL_Vulkan_CreateSurface` would hand DXVK's Turnip
+   `VkInstance` to a *different* loader. On Android the patched WSI fetches the
+   `ANativeWindow*` from SDL window properties and calls `vkCreateAndroidSurfaceKHR` resolved
+   from DXVK's own loader.
+3. **Deferred surface creation** (`SDL3Main.cpp` sets
+   `DXVK_CONFIG=d3d9.deferSurfaceCreation = True`): an `ANativeWindow` accepts exactly **one**
+   producer connection. The engine's device-creation retry loop (W3DDisplay::init /
+   dx8wrapper) can construct a doomed first device — its depth-format default `D3DFMT_D32` is
+   rejected by the driver — whose implicit swapchain has already claimed the window; the
+   failure path leaks the connection and every subsequent device then fails forever with
+   `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR` (black screen, game running headless behind it). With
+   deferred creation only the device that actually presents ever touches the window.
+4. **Shared libc++** (`meson.build` patch hunk + `ANDROID_STL=c++_shared`): DXVK must NOT
+   statically link libstdc++ on Android, or a `DxvkError` thrown inside DXVK has its own
+   RTTI and gets swallowed by `catch(...)` in libmain.so instead of surfacing the real error.
+5. **Zero-initialized heap** (`GameMemory.cpp`): desktop builds route global `new` through the
+   engine's memory pool, which memsets allocations to 0 — and the 2003 codebase silently
+   relies on that. Bionic `malloc` returns dirty memory; Android now uses `calloc` so the
+   hundreds of constructors that leave members uninitialized keep working.
+
+### Debugging tip: dxvk.conf without rebuilding
+
+DXVK reads `$PWD/dxvk.conf`, and the game's working directory is `/sdcard/GeneralsZH` — so
+you can A/B any DXVK option on-device with no rebuild:
+
+```bash
+printf 'd3d9.deferSurfaceCreation = True\n' > /tmp/dxvk.conf
+adb push /tmp/dxvk.conf /sdcard/GeneralsZH/dxvk.conf
+adb shell am force-stop com.generalsx.generalszh
+adb shell am start -n com.generalsx.generalszh/.GeneralsXZHActivity
+```
+
+(Note: the `DXVK_CONFIG` env var set by `SDL3Main.cpp` wins over the file for the *same* key;
+other keys merge. This is exactly how the deferSurfaceCreation root cause was confirmed
+before baking the fix into code.)
+
+---
+
+## Known Issues & Remaining Work
+
+**Resolved during the 2026-07-07 session** (kept here so future readers know these were
+real and are fixed, not never-encountered):
+
+- ~~Black screen / `VK_ERROR_NATIVE_WINDOW_IN_USE_KHR` loop~~ → deferred surface creation
+  (see [rendering pipeline](#rendering-pipeline-phase-3) point 3).
+- ~~Touch needed two taps per menu button~~ → the iOS touch→mouse gesture translator
+  (tap-select, drag-box, long-press right-click, two-finger pan, pinch zoom) is now enabled
+  on Android (`GX_TOUCH_UI` in `SDL3GameEngine.cpp`); a real finger activates in one tap.
+  (`adb shell input tap` still needs two — its 0 ms down-up delivers hover+click in one
+  frame; use `input swipe x y x y 150` to emulate a real tap.)
+- ~~First tap after boot swallowed / pan-zoom interference / jitter drag-boxes~~ → three
+  gesture fixes (commit `ffa4645e9`): the main menu auto-reveals on touch platforms
+  (desktop hides it until the mouse moves, which cost touch users their entire first
+  tap mid-reveal-transition); two-finger pan and pinch now mode-lock (whichever moves
+  first wins — no more zoom ticks while panning or camera drift while pinching); and
+  gesture thresholds are physical (~3 mm, DPI-scaled) instead of 8 px (~0.7 mm on this
+  panel — fingertip jitter turned taps into accidental drag-boxes).
+- ~~Silent audio~~ → Android inherited the Linux desktop `ALSOFT_DRIVERS=pulse,alsa,...`
+  workaround (`__ANDROID__` also defines `__linux__`), forcing OpenAL to the null backend.
+  Android now keeps default selection and picks OpenSL ES; audio_flinger shows live tracks.
+- ~~`D3DRS_PATCHSEGMENTS` warn flood~~ (~72k lines / 12 min) → N-patches are Windows-only.
+- Basic lifecycle: home → resume survives with the same process and rendering intact (the
+  iOS background render-pause now also guards Android).
+
+**Known issues (2026-07-07):**
+
+- **`MISSING: 'GUI:CustomMission'`** label in the Solo Play menu — upstream localization gap,
+  cosmetic.
+- **16-bit depth buffer**: the surviving device is created with `D3DFMT_D16` (the engine's
+  fullscreen mode-matching fails for the native panel resolution and its `D3DFMT_D32` default
+  is rejected). Possible z-fighting on large maps; a future fix is defaulting to `D24S8` on
+  Android.
+- **Log spam**: the engine's `[INI]`/`[SUBSYS]`/`[GX-ISSUE144]` debug traces flood logcat
+  during boot.
+- **Audio quality/mix** verified only as "tracks are playing" (audio_flinger); not yet
+  listened to by a human.
+
+**Remaining work (Phase 4 candidates):**
+
+- Touch gesture tuning under real gameplay (drag-box vs pan feel, long-press timing).
+- Deeper lifecycle: rotation, split-screen, low-memory kills, save-on-pause.
+- Performance: FPS currently ~30-60 at native 2800×1752; consider render-scale option.
+- Non-Adreno devices: Xclipse 920 (Galaxy S22) has no BCn texture support and no Turnip —
+  needs an asset-transcode fallback (documented in the Phase 0 research).
+- Campaign / Generals Challenge / video playback testing.
 
 ---
 

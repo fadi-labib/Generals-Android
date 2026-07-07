@@ -17,3 +17,6 @@
 [submodule "GeneralsReplays"]
 	path = GeneralsReplays
 	url = https://github.com/fbraz3/GeneralsXReplays.git
+[submodule "references/libadrenotools"]
+	path = references/libadrenotools
+	url = https://github.com/bylaws/libadrenotools.git

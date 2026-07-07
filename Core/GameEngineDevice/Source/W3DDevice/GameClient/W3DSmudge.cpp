@@ -46,6 +46,19 @@ SmudgeManager *TheSmudgeManager=nullptr;
 
 W3DSmudgeManager::W3DSmudgeManager()
 {
+	// GeneralsX @android FadiLabib 07/07/2026 - Zero-init all members. The
+	// constructor was previously empty, leaving these pointers/sizes as garbage.
+	// ReleaseResources() (called from ReAcquireResources/init) then runs
+	// REF_PTR_RELEASE on the garbage m_backgroundTexture/m_indexBuffer and
+	// SIGSEGVs. Desktop happened to get zeroed memory; Android/arm64 does not.
+	m_smudgeGroup = nullptr;
+	m_posBuffer = nullptr;
+	m_RGBABuffer = nullptr;
+	m_sizeBuffer = nullptr;
+	m_backgroundTexture = nullptr;
+	m_indexBuffer = nullptr;
+	m_backBufferWidth = 0;
+	m_backBufferHeight = 0;
 }
 
 W3DSmudgeManager::~W3DSmudgeManager()
@@ -81,6 +94,17 @@ void W3DSmudgeManager::ReAcquireResources()
 	ReleaseResources();
 
 	SurfaceClass *surface=DX8Wrapper::_Get_DX8_Back_Buffer();
+	// GeneralsX @android FadiLabib 07/07/2026 - Guard against a missing back
+	// buffer. If the swapchain has no valid back buffer yet (e.g. the Vulkan
+	// surface has not been created on Android), _Get_DX8_Back_Buffer returns
+	// null; dereferencing it here SIGSEGVs. Disable the heat-haze/smudge effect
+	// (it needs a back-buffer copy) rather than crash the whole client.
+	if (surface == nullptr)
+	{
+		m_hardwareSupportStatus = SMUDGE_SUPPORT_NO;
+		return;
+	}
+
 	SurfaceClass::SurfaceDescription surface_desc;
 
 	surface->Get_Description(surface_desc);

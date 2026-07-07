@@ -52,6 +52,11 @@
 #include <android/log.h>
 #include <pthread.h>
 #include <cstdint>
+// GeneralsX @feature FadiLabib 07/07/2026 Turnip-via-adrenotools driver staging.
+// dladdr() locates the APK nativeLibraryDir; sys/stat + fcntl copy the driver.
+#include <dlfcn.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #endif
 #endif
 #include <cstdlib>
@@ -122,6 +127,27 @@ extern Int GameMain();
 // bring-up later) blind. This pump reads the write end of a pipe that stdout and
 // stderr are dup2'd onto and forwards each line to __android_log_write under a
 // stable tag, so `adb logcat -s GeneralsX` shows the full engine output.
+// GeneralsX @feature FadiLabib 07/07/2026 Filter boot-time trace spam from logcat (GENERALSX_VERBOSE disables).
+// The [INI]/[SUBSYS]/[GX-ISSUE144] fprintf traces flood logcat for ~40 s per boot.
+// Returns true when a line is this high-volume boot trace and should be dropped.
+// Error-ish lines (err:/warn:/ERROR/FATAL, including DXVK's own) are ALWAYS kept so
+// real diagnostics can never be swallowed by the filter. Cheap, allocation-free:
+// skip leading whitespace, then a couple of prefix compares on the per-line path.
+static bool gxIsBootTraceSpam(const char *line)
+{
+	while (*line == ' ' || *line == '\t') ++line;
+	// Safety first: never drop error/warn lines even if a prefix somehow matches.
+	if (strncmp(line, "err:", 4) == 0 ||
+	    strncmp(line, "warn:", 5) == 0 ||
+	    strncmp(line, "ERROR", 5) == 0 ||
+	    strncmp(line, "FATAL", 5) == 0) {
+		return false;
+	}
+	return strncmp(line, "[INI]", 5) == 0
+	    || strncmp(line, "[SUBSYS]", 8) == 0
+	    || strncmp(line, "[GX-ISSUE144]", 13) == 0;
+}
+
 static void *gxLogcatPump(void *arg)
 {
 	const int readFd = (int)(intptr_t)arg;
@@ -129,12 +155,17 @@ static void *gxLogcatPump(void *arg)
 	size_t len = 0;
 	char chunk[512];
 	ssize_t n;
+	// GeneralsX @feature FadiLabib 07/07/2026 Read the verbose gate ONCE. Unset
+	// (default) = filter boot-trace spam; set = full firehose for debugging.
+	const bool verbose = (getenv("GENERALSX_VERBOSE") != nullptr);
 	while ((n = read(readFd, chunk, sizeof(chunk))) > 0) {
 		for (ssize_t i = 0; i < n; ++i) {
 			const char c = chunk[i];
 			if (c == '\n' || len == sizeof(line) - 1) {
 				line[len] = '\0';
-				__android_log_write(ANDROID_LOG_INFO, "GeneralsX", line);
+				if (verbose || !gxIsBootTraceSpam(line)) {
+					__android_log_write(ANDROID_LOG_INFO, "GeneralsX", line);
+				}
 				len = 0;
 				if (c != '\n') {
 					line[len++] = c;  // carry the char that overflowed the buffer
@@ -146,7 +177,9 @@ static void *gxLogcatPump(void *arg)
 	}
 	if (len > 0) {
 		line[len] = '\0';
-		__android_log_write(ANDROID_LOG_INFO, "GeneralsX", line);
+		if (verbose || !gxIsBootTraceSpam(line)) {
+			__android_log_write(ANDROID_LOG_INFO, "GeneralsX", line);
+		}
 	}
 	return nullptr;
 }
@@ -191,6 +224,116 @@ static void gxRedirectStdioToLogcat()
 		close(pipeFd[0]);
 		close(pipeFd[1]);
 	}
+}
+
+// GeneralsX @feature FadiLabib 07/07/2026 Stage the bundled Mesa Turnip driver and
+// point DXVK's Vulkan loader at it via adrenotools. WHY: the stock Qualcomm driver
+// on the Adreno 650 only exposes Vulkan 1.1, which DXVK 2.6 rejects ("Skipping
+// Vulkan 1.1 adapter" -> "No adapters found. A Vulkan 1.3 capable driver is
+// required"). Turnip (Mesa, freedreno) implements Vulkan 1.3+ for Adreno 6xx.
+//
+// adrenotools requires: (a) its hook libs (libhook_impl.so / libmain_hook.so) in
+// the APK nativeLibraryDir, and (b) the custom driver in a PRIVATE, non-sdcard dir
+// that dlopen trusts (not world-writable). We bundle the driver as the jniLib
+// libvulkan_freedreno.so (so Android extracts it to nativeLibraryDir), then copy it
+// once into the app's internal files dir under its real name, and export the three
+// env vars the DXVK loader (vulkan_loader.cpp adrenotools branch) reads.
+//
+// nativeLibraryDir is discovered with dladdr() on this function — it lives in
+// libmain.so, which sits in nativeLibraryDir alongside the hook libs.
+static bool gxCopyFile(const char *src, const char *dst)
+{
+	int in = open(src, O_RDONLY);
+	if (in < 0) {
+		fprintf(stderr, "WARNING: Turnip: open(%s) failed: %s\n", src, strerror(errno));
+		return false;
+	}
+	int out = open(dst, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+	if (out < 0) {
+		fprintf(stderr, "WARNING: Turnip: open(%s) for write failed: %s\n", dst, strerror(errno));
+		close(in);
+		return false;
+	}
+	char buf[65536];
+	ssize_t n;
+	bool ok = true;
+	while ((n = read(in, buf, sizeof(buf))) > 0) {
+		ssize_t off = 0;
+		while (off < n) {
+			ssize_t w = write(out, buf + off, (size_t)(n - off));
+			if (w <= 0) { ok = false; break; }
+			off += w;
+		}
+		if (!ok) break;
+	}
+	if (n < 0) ok = false;
+	close(in);
+	close(out);
+	return ok;
+}
+
+static void gxSetupTurnipDriver()
+{
+	// Driver soname as it ships in the adrenotools package meta.json. adrenotools
+	// dlopens this exact filename from GENERALSX_TURNIP_DRIVER_DIR.
+	static const char *DRIVER_NAME = "vulkan.ad07xx.so";
+	// The jniLib we ship the Turnip .so as (Android only extracts lib*.so names).
+	static const char *BUNDLED_SONAME = "libvulkan_freedreno.so";
+
+	// 1) nativeLibraryDir: the directory containing this very .so (libmain.so).
+	Dl_info info;
+	if (dladdr(reinterpret_cast<void *>(&gxSetupTurnipDriver), &info) == 0 || info.dli_fname == nullptr) {
+		fprintf(stderr, "WARNING: Turnip: dladdr failed; cannot locate nativeLibraryDir — stock driver will be used\n");
+		return;
+	}
+	char nativeLibDir[1024];
+	snprintf(nativeLibDir, sizeof(nativeLibDir), "%s", info.dli_fname);
+	if (char *slash = strrchr(nativeLibDir, '/')) {
+		*slash = '\0';
+	}
+
+	// 2) Private files dir (dlopen-trusted, not sdcard) to hold the copied driver.
+	const char *filesDir = SDL_GetAndroidInternalStoragePath();
+	if (filesDir == nullptr) {
+		fprintf(stderr, "WARNING: Turnip: internal storage path unavailable — stock driver will be used\n");
+		return;
+	}
+
+	char srcPath[1024];
+	char dstPath[1024];
+	snprintf(srcPath, sizeof(srcPath), "%s/%s", nativeLibDir, BUNDLED_SONAME);
+	snprintf(dstPath, sizeof(dstPath), "%s/%s", filesDir, DRIVER_NAME);
+
+	if (access(srcPath, R_OK) != 0) {
+		fprintf(stderr, "WARNING: Turnip: bundled driver %s not found (%s) — stock driver will be used\n",
+		        BUNDLED_SONAME, strerror(errno));
+		return;
+	}
+
+	// Copy once; refresh if the bundled driver changed size (e.g. after an update).
+	struct stat srcStat{}, dstStat{};
+	const bool haveDst = (stat(dstPath, &dstStat) == 0);
+	const bool haveSrc = (stat(srcPath, &srcStat) == 0);
+	if (!haveDst || !haveSrc || srcStat.st_size != dstStat.st_size) {
+		if (!gxCopyFile(srcPath, dstPath)) {
+			fprintf(stderr, "WARNING: Turnip: failed to stage driver to %s — stock driver will be used\n", dstPath);
+			return;
+		}
+		fprintf(stderr, "INFO: Turnip: staged driver -> %s (%lld bytes)\n",
+		        dstPath, (long long)srcStat.st_size);
+	} else {
+		fprintf(stderr, "INFO: Turnip: driver already staged at %s\n", dstPath);
+	}
+
+	// 3) Export the loader contract. DRIVER_DIR MUST end with '/': adrenotools
+	// stat()s customDriverDir + customDriverName by string concatenation.
+	char driverDir[1024];
+	snprintf(driverDir, sizeof(driverDir), "%s/", filesDir);
+	setenv("GENERALSX_ADRENOTOOLS_HOOK_DIR", nativeLibDir, 1);
+	setenv("GENERALSX_TURNIP_DRIVER_DIR", driverDir, 1);
+	setenv("GENERALSX_TURNIP_DRIVER_NAME", DRIVER_NAME, 1);
+	fprintf(stderr, "INFO: Turnip: adrenotools env set (hookLibDir=%s driverDir=%s name=%s)\n",
+	        nativeLibDir, driverDir, DRIVER_NAME);
 }
 #endif // __ANDROID__
 
@@ -290,7 +433,12 @@ static void FilterSoftwareVulkanICDs()
 static void FilterPipeWireOpenAL()
 {
 	// GeneralsX @bugfix Copilot 24/03/2026 PipeWire/OpenAL workaround is Linux-only; keep macOS CoreAudio backend selection untouched.
-	#if defined(__linux__)
+	// GeneralsX @android FadiLabib 07/07/2026 - __ANDROID__ also defines __linux__, but the
+	// desktop driver list (pulse,alsa,oss,jack,...) contains no backend that exists on
+	// Android, so openal-soft fell through to 'null'/'wave' and the game was silent.
+	// Android's libopenal.so ships the OpenSL backend; leave default selection intact.
+	// The movaps CPU-ext workaround is x86-only anyway (arm64 NEON has no such fault).
+	#if defined(__linux__) && !defined(__ANDROID__)
 	// Crash: alcOpenDevice() hits 'movaps %xmm1,0x26260(%rbx)' — SSE movaps requires
 	// 16-byte alignment; a misaligned ALCdevice struct faults regardless of backend.
 	// Disabling CPU extensions forces openal-soft to use scalar code that has no
@@ -375,6 +523,12 @@ int main(int argc, char* argv[])
 		fprintf(stderr, "INFO: Android working directory: %s, HOME=%s\n",
 		        GX_ANDROID_ASSET_DIR, internal ? internal : "<unset>");
 	}
+
+	// GeneralsX @feature FadiLabib 07/07/2026 Stage Turnip + set the adrenotools env
+	// BEFORE any Vulkan load (SDL_Vulkan_LoadLibrary below, and DXVK's own loader when
+	// the d3d8 device is created). Gives DXVK a Vulkan 1.3 adapter instead of the
+	// stock Adreno 1.1 driver it rejects.
+	gxSetupTurnipDriver();
 #endif
 
 #if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
@@ -589,10 +743,11 @@ int main(int argc, char* argv[])
 		// This prevents LLVM SIGSEGV crash during Vulkan driver enumeration
 		// Must be done here, not in SDL3GameEngine::init() which is too late
 		fprintf(stderr, "INFO: Initializing SDL3 video subsystem...\n");
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#if (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) || defined(__ANDROID__)
 		// All mouse events are synthesized by the gesture translator in
 		// SDL3GameEngine.cpp; SDL's automatic touch->mouse synthesis would
 		// double-deliver finger 1 and fight the two-finger pan logic.
+		// GeneralsX @android FadiLabib 07/07/2026 - Android uses the same translator.
 		SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
 #endif
 		if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
@@ -602,6 +757,18 @@ int main(int argc, char* argv[])
 
 		// Set DXVK WSI driver before loading Vulkan
 		setenv("DXVK_WSI_DRIVER", "SDL3", 1);
+
+#if defined(__ANDROID__)
+		// GeneralsX @android FadiLabib 07/07/2026 - Defer DXVK surface creation until
+		// first Present. An ANativeWindow allows exactly ONE producer connection, and
+		// W3D's device-creation retry loop (W3DDisplay::init / dx8wrapper) can build a
+		// doomed first device (e.g. D3DFMT_D32 depth, unsupported by the driver) whose
+		// implicit swapchain claims the window before failing; every later device then
+		// dies with VK_ERROR_NATIVE_WINDOW_IN_USE_KHR and the screen stays black. With
+		// deferSurfaceCreation only the device that actually presents touches the
+		// window. overwrite=0 so a user-set DXVK_CONFIG still wins.
+		setenv("DXVK_CONFIG", "d3d9.deferSurfaceCreation = True", 0);
+#endif
 
 		// GeneralsX @bugfix BenderAI 06/03/2026 - Exclude LLVMpipe Vulkan ICD before loading Vulkan.
 		// libvulkan_lvp.so crashes during static initialization with LLVM 20.x when the Vulkan
