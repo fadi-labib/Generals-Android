@@ -88,10 +88,12 @@ machine about one more platform. From the lineage came the foundation this port 
   — the direct parent, and the single biggest reason this port took a day instead of
   months. Nearly every hard problem Android faced, his port had already solved once:
   the touch→mouse gesture translator (tap-defer, drag-box, long-press, pan, pinch —
-  reused **verbatim**, Android widened an `#if` guard), the app-lifecycle render
-  pause, the DXVK-on-mobile cross-build methodology (meson cross-file + patch
-  workflow that `dxvk-android.patch` copies wholesale), the fontconfig-free font
-  staging, and — maybe most valuable of all — the
+  adopted wholesale by widening an `#if` guard, then
+  [evolved on Android](docs/port/TOUCH_CONTROLS.md): pan/pinch mode-locking,
+  physical DPI-scaled thresholds, and a main-menu fix that flow back to iOS too),
+  the app-lifecycle render pause, the DXVK-on-mobile cross-build methodology (meson
+  cross-file + patch workflow that `dxvk-android.patch` copies wholesale), the
+  fontconfig-free font staging, and — maybe most valuable of all — the
   [Porting Playbook](docs/port/PORTING_PLAYBOOK.md): a written record of every
   failure mode and root cause, which turned Android's debugging nights from
   archaeology into lookups. Want this game on a Mac, iPhone, or iPad? **Go there** —

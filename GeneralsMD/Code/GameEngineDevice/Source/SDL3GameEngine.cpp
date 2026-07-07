@@ -62,11 +62,14 @@ extern Mouse *TheMouse;
 extern Keyboard *TheKeyboard;
 extern GameWindowManager *TheWindowManager;
 
-// GeneralsX @android FadiLabib 07/07/2026 - Touch-first platforms. Android reuses
-// the iOS touch->mouse gesture translator and the background render pause verbatim:
-// both are pure SDL (finger events in, synthetic mouse events out), and Android has
-// the same constraints (single-tap must hover before clicking; presenting while the
-// ANativeWindow is gone after onPause is fatal, like the Metal drawable on iOS).
+// GeneralsX @android FadiLabib 07/07/2026 - Touch-first platforms. The touch->mouse
+// gesture translator and background render pause below are SHARED between iOS and
+// Android: both are pure SDL (finger events in, synthetic mouse events out), and both
+// platforms have the same constraints (single-tap must hover before clicking;
+// presenting while the ANativeWindow / Metal drawable is gone is fatal). The system
+// originated on iOS and was adopted by Android unchanged, then evolved here for both
+// (pan/pinch mode-locking, DPI-scaled thresholds). Full design doc:
+// docs/port/TOUCH_CONTROLS.md — tuning changes alter BOTH platforms' feel.
 #if (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) || defined(__ANDROID__)
 #define GX_TOUCH_UI 1
 #else
