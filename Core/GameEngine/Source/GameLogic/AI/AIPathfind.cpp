@@ -4026,7 +4026,13 @@ void PathfindLayer::classifyWallMapCell( Int i, Int j , PathfindCell *cell, Obje
 
 //----------------------- Pathfinder ---------------------------------------
 
-Pathfinder::Pathfinder() :m_map(nullptr)
+// GeneralsX @android FadiLabib 07/07/2026 - Initialize m_blockOfMapCells to nullptr.
+// reset() (called from this ctor) does `delete [] m_blockOfMapCells` before nulling it,
+// so the member must be null on first construction. On desktop/iOS the freshly-allocated
+// heap block happened to be zero; on Android the Pathfinder object reuses heap memory that
+// still holds INI-string bytes, making the uninitialized pointer a garbage address and the
+// delete[] a SIGSEGV in Pathfinder::reset() during AI::AI() / GameEngine::init().
+Pathfinder::Pathfinder() :m_blockOfMapCells(nullptr), m_map(nullptr)
 {
 	debugPath = nullptr;
 	PathfindCellInfo::allocateCellInfos();

@@ -739,6 +739,12 @@ W3DBridgeBuffer::W3DBridgeBuffer()
 	m_bridgeTexture = nullptr;
 	m_curNumBridgeVertices=0;
 	m_curNumBridgeIndices=0;
+	// GeneralsX @android FadiLabib 07/07/2026 - m_numBridges must be zeroed BEFORE
+	// clearAllBridges(), which loops [0, m_numBridges) and REF_PTR_RELEASEs each
+	// m_bridges[i]. The member was previously left uninitialized here; on Windows/macOS
+	// the fresh allocation happened to be zero, but on Android/arm64 it holds garbage,
+	// so the loop runs out of bounds and SIGSEGVs in W3DBridge::clearBridge().
+	m_numBridges = 0;
 	clearAllBridges();
 	allocateBridgeBuffers();
 	m_initialized = true;

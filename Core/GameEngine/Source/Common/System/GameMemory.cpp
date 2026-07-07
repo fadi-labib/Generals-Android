@@ -3295,7 +3295,15 @@ void STLSpecialAlloc::deallocate(void* __p, size_t)
 // self-contained and never cross into libc++). Only the global channel changes here.
 #ifdef __ANDROID__
 	#include <cstdlib>
-	#define GX_GLOBAL_ALLOC(size) (::malloc(size))
+	// GeneralsX @android FadiLabib 07/07/2026 - Use calloc (zero-initialized) not malloc.
+	// The desktop/iOS global new routes through DynamicMemoryAllocator::allocateBytes, which
+	// memset()s the block to 0 (see allocateBytesImplementation). The ZH codebase pervasively
+	// relies on `new` returning zeroed storage (many ctors leave members uninitialized and
+	// assume 0). Bionic malloc returns dirty memory, so on Android those members held stale
+	// heap bytes (e.g. reused INI-string data) -> garbage pointers -> SIGSEGV cascades during
+	// GameEngine::init / shell-map object creation (Pathfinder::reset, Object/Player power).
+	// calloc keeps the same bionic allocator (::free stays valid) while restoring zero-init.
+	#define GX_GLOBAL_ALLOC(size) (::calloc(1, (size)))
 	#define GX_GLOBAL_FREE(p)     (::free(p))
 #else
 	#define GX_GLOBAL_ALLOC(size) (TheDynamicMemoryAllocator->allocateBytes((size), "global operator new"))
@@ -3382,7 +3390,7 @@ void* operator new(size_t size, const char * fname, int)
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
 #ifdef __ANDROID__
-	return ::malloc(size);
+	return ::calloc(1, size);	// GeneralsX @android - zero-init to match desktop pool (see GX_GLOBAL_ALLOC note)
 #elif defined(MEMORYPOOL_DEBUG)
 	return TheDynamicMemoryAllocator->allocateBytesImplementation(size, fname);
 #else
@@ -3412,7 +3420,7 @@ void* operator new[](size_t size, const char * fname, int)
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
 #ifdef __ANDROID__
-	return ::malloc(size);
+	return ::calloc(1, size);	// GeneralsX @android - zero-init to match desktop pool (see GX_GLOBAL_ALLOC note)
 #elif defined(MEMORYPOOL_DEBUG)
 	return TheDynamicMemoryAllocator->allocateBytesImplementation(size, fname);
 #else

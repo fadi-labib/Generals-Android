@@ -3519,7 +3519,13 @@ SurfaceClass * DX8Wrapper::_Get_DX8_Back_Buffer(unsigned int num)
 {
 	DX8_THREAD_ASSERT();
 
-	IDirect3DSurface8 * bb;
+	// GeneralsX @android FadiLabib 07/07/2026 - Initialize bb. DXVK's D3D9
+	// GetBackBuffer can return D3D_OK with *ppBackBuffer == nullptr when the
+	// back buffers were not (re)created (e.g. a swapchain that has no valid
+	// surface yet on Android). Leaving bb uninitialized then read a garbage
+	// stack pointer as a "valid" back buffer, wrapping it and crashing on the
+	// first deref (SIGSEGV in W3DSmudgeManager::ReAcquireResources).
+	IDirect3DSurface8 * bb = nullptr;
 	SurfaceClass *surf=nullptr;
 	DX8CALL(GetBackBuffer(num,D3DBACKBUFFER_TYPE_MONO,&bb));
 	if (bb)
