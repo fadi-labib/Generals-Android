@@ -1,0 +1,40 @@
+# GeneralsX @docs FadiLabib 07/07/2026 - Minimal MkDocs Material site: auto-generated
+# nav from the docs/ folder structure (no hand-curated nav yet), search, dark mode.
+# Built and deployed by .github/workflows/docs-pages.yml (replaces the legacy Jekyll
+# Pages build, which had no navigation at all).
+site_name: Generals Zero Hour on Android
+site_description: C&C Generals Zero Hour running natively on Android — Vulkan (Turnip + DXVK), SDL3, OpenAL
+site_url: https://fadi-labib.github.io/Generals-Android/
+repo_url: https://github.com/fadi-labib/Generals-Android
+repo_name: fadi-labib/Generals-Android
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - tables
