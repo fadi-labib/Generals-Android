@@ -210,6 +210,26 @@ const float PINCH_STEP_RATIO = 0.03f;  // 3% distance change per wheel tick
 // scales that delta — 1.0 tracks the fingers; lower = slower camera.
 const float PAN_GAIN = 1.0f;
 
+// GeneralsX @android FadiLabib 07/07/2026 - Edge-hold scroll. A pure 1:1 drag can
+// only move the camera as far as the fingers can travel, so it stops dead when
+// they hit the screen edge — you can't cross a map bigger than one swipe. While
+// the pan centroid sits within EDGE_MARGIN_FRAC of an edge, add a steady offset
+// in that direction so the engine's RMB joystick keeps scrolling (a slow, fixed
+// velocity — this is the knob if it feels too fast/slow), letting you traverse
+// the whole map by parking your fingers at the edge. Normal drags never reach it.
+const float EDGE_MARGIN_FRAC = 0.10f;        // within 10% of the left/right/top edge = "at the edge"
+// The 3D view is full-screen height but the control bar is painted over the
+// bottom strip, so fingers stop at the play area and never reach a 6% bottom
+// band. Trigger the bottom edge higher up, above the control bar.
+const float EDGE_MARGIN_BOTTOM_FRAC = 0.18f; // bottom trigger band (clears the control bar)
+// The engine's RMB scroll speed is proportional to the cursor's offset from the
+// anchor measured in INTERNAL display pixels, and internal res now tracks the
+// panel (see SDL3Main's -xres/-yres). A fixed pixel offset therefore scrolls at
+// wildly different speeds per resolution (5px was fine at the old 4:3 internal
+// res, ~5% of keyboard-scroll speed at native res). Express it as a fraction of
+// window width so the feel is resolution-independent. This is the speed knob.
+const float EDGE_SCROLL_FRAC = 0.015f;       // per-frame edge push, fraction of window width
+
 // GeneralsX @android FadiLabib 07/07/2026 - Gesture thresholds in PHYSICAL size,
 // not pixels. The old fixed 8 px is ~0.7 mm on a Tab S7+ (2800x1752 @ ~274 ppi):
 // normal fingertip jitter crosses it, so taps kept committing as accidental
@@ -546,9 +566,24 @@ void updateTouchLongPress(SDL3Mouse *mouse, SDL_Window *window)
 	// still) makes the engine's velocity-joystick scroll behave like a 1:1 drag and
 	// stop the instant the fingers stop.
 	if (s_touch.phase == TouchState::PAN) {
+		float offX = s_touch.panAccumX * PAN_GAIN;
+		float offY = s_touch.panAccumY * PAN_GAIN;
+
+		// Edge-hold: keep scrolling in the drag direction when the centroid parks
+		// near a screen edge, so a map larger than one swipe stays reachable.
+		int winW = 0, winH = 0;
+		SDL_GetWindowSize(window, &winW, &winH);
+		const float marginX = EDGE_MARGIN_FRAC * (float)winW;
+		const float marginTop = EDGE_MARGIN_FRAC * (float)winH;
+		const float marginBottom = EDGE_MARGIN_BOTTOM_FRAC * (float)winH;
+		const float edgePush = EDGE_SCROLL_FRAC * (float)winW;
+		if (s_touch.panLastX < marginX)                    offX -= edgePush;
+		else if (s_touch.panLastX > (float)winW - marginX) offX += edgePush;
+		if (s_touch.panLastY < marginTop)                     offY -= edgePush;
+		else if (s_touch.panLastY > (float)winH - marginBottom) offY += edgePush;
+
 		sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION,
-		                   s_touch.panX + s_touch.panAccumX * PAN_GAIN,
-		                   s_touch.panY + s_touch.panAccumY * PAN_GAIN);
+		                   s_touch.panX + offX, s_touch.panY + offY);
 		s_touch.panAccumX = 0.0f;
 		s_touch.panAccumY = 0.0f;
 	}
