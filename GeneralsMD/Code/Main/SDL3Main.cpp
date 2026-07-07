@@ -724,6 +724,18 @@ int main(int argc, char* argv[])
 		// Set DXVK WSI driver before loading Vulkan
 		setenv("DXVK_WSI_DRIVER", "SDL3", 1);
 
+#if defined(__ANDROID__)
+		// GeneralsX @android FadiLabib 07/07/2026 - Defer DXVK surface creation until
+		// first Present. An ANativeWindow allows exactly ONE producer connection, and
+		// W3D's device-creation retry loop (W3DDisplay::init / dx8wrapper) can build a
+		// doomed first device (e.g. D3DFMT_D32 depth, unsupported by the driver) whose
+		// implicit swapchain claims the window before failing; every later device then
+		// dies with VK_ERROR_NATIVE_WINDOW_IN_USE_KHR and the screen stays black. With
+		// deferSurfaceCreation only the device that actually presents touches the
+		// window. overwrite=0 so a user-set DXVK_CONFIG still wins.
+		setenv("DXVK_CONFIG", "d3d9.deferSurfaceCreation = True", 0);
+#endif
+
 		// GeneralsX @bugfix BenderAI 06/03/2026 - Exclude LLVMpipe Vulkan ICD before loading Vulkan.
 		// libvulkan_lvp.so crashes during static initialization with LLVM 20.x when the Vulkan
 		// loader enumerates all ICDs. Restrict to hardware ICDs first.
