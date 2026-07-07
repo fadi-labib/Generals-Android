@@ -170,6 +170,8 @@ struct TouchState {
 	float twoCx0 = 0.0f, twoCy0 = 0.0f; // centroid at second-finger down (px)
 	float twoDist0 = 0.0f;              // finger distance at second-finger down (px)
 	Uint64 downTicks = 0;
+	bool thresholdCrossed = false;      // finger1 passed the drag threshold, LMB not yet committed
+	Uint64 thresholdCrossedTicks = 0;   // when it crossed, for the second-finger grace window
 	Uint64 lastTapTicks = 0;               // commit time of the previous clean tap
 	float lastTapX = 0.0f, lastTapY = 0.0f; // position of the previous clean tap
 	float panLastX = 0.0f, panLastY = 0.0f;   // previous pan centroid (per-event delta)
@@ -180,6 +182,14 @@ struct TouchState {
 TouchState s_touch;
 
 const Uint64 LONG_PRESS_MS = 600;
+// GeneralsX @android FadiLabib 07/07/2026 - Two fingers rarely touch down in the
+// same SDL event: finger1's own motion can cross the drag threshold a few ms
+// before finger2's FINGER_DOWN is delivered, prematurely committing a real LMB
+// click (deselects the unit / drops a rally point) right before the gesture is
+// recognized as a two-finger pan. Deferring the LMB commit by this long gives a
+// same-gesture second finger time to land and redirect straight into the
+// two-finger path, which never sends a click.
+const Uint64 SECOND_FINGER_GRACE_MS = 60;
 // GeneralsX @android FadiLabib 07/07/2026 - Touch double-tap -> double-click. A
 // tap landing within this window AND near the previous tap emits clicks=2 on the
 // button event, so the engine's double-click path fires (e.g. double-click a unit
@@ -322,6 +332,7 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 			s_touch.f1x = event.tfinger.x;
 			s_touch.f1y = event.tfinger.y;
 			s_touch.downTicks = SDL_GetTicks();
+			s_touch.thresholdCrossed = false;
 			// Move the cursor to the touch point NOW (motion clicks nothing, so the
 			// deferred-tap protection is intact). This lets the GUI process hover
 			// over the next frame(s) before the tap commits — hover-driven widgets
@@ -372,14 +383,12 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 
 		if (s_touch.phase == TouchState::PENDING && event.tfinger.fingerID == s_touch.finger1) {
 			const float moved = SDL_fabsf(px - s_touch.downX) + SDL_fabsf(py - s_touch.downY);
-			if (moved >= gestureThresholdPx(window)) {
-				// Commit to a drag: anchor the LMB at the original touch point so
-				// drag-boxes start where the finger first landed.
-				sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, s_touch.downX, s_touch.downY);
-				sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_DOWN,
-				                   s_touch.downX, s_touch.downY, SDL_BUTTON_LEFT);
-				sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, px, py);
-				s_touch.phase = TouchState::DRAGGING;
+			if (moved >= gestureThresholdPx(window) && !s_touch.thresholdCrossed) {
+				// Threshold crossed, but don't commit the LMB click yet — a second
+				// finger landing in the next few ms (see SECOND_FINGER_GRACE_MS)
+				// means this was actually a two-finger gesture starting, not a drag.
+				s_touch.thresholdCrossed = true;
+				s_touch.thresholdCrossedTicks = SDL_GetTicks();
 			}
 		}
 		else if (s_touch.phase == TouchState::DRAGGING && event.tfinger.fingerID == s_touch.finger1) {
@@ -511,6 +520,18 @@ void updateTouchLongPress(SDL3Mouse *mouse, SDL_Window *window)
 		sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_UP,
 		                   s_touch.downX, s_touch.downY, SDL_BUTTON_RIGHT);
 		s_touch.phase = TouchState::LONGPRESSED;
+	}
+
+	// Threshold was crossed but the LMB commit was deferred (see
+	// SECOND_FINGER_GRACE_MS above) — if the grace window has passed with no
+	// second finger, this really is a single-finger drag: commit it now.
+	if (s_touch.phase == TouchState::PENDING && s_touch.thresholdCrossed &&
+	    (SDL_GetTicks() - s_touch.thresholdCrossedTicks) >= SECOND_FINGER_GRACE_MS) {
+		sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, s_touch.downX, s_touch.downY);
+		sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_DOWN,
+		                   s_touch.downX, s_touch.downY, SDL_BUTTON_LEFT);
+		sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, s_touch.lastX, s_touch.lastY);
+		s_touch.phase = TouchState::DRAGGING;
 	}
 
 	// Flush one frame's worth of pan travel as an RMB-scroll offset from the fixed
