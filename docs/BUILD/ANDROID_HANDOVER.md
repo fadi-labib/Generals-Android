@@ -162,11 +162,13 @@ Device on this desk: Galaxy Tab S7+ (`adb devices` → `R52NC03AXPW`, SM-T970).
 
 ## Prioritized next steps (with implementation hints)
 
-1. **Real-gameplay touch tuning.** The translator constants
-   (`LONG_PRESS_MS=600`, `TAP_DEAD_ZONE_PX=8`, `PINCH_STEP_RATIO=0.06` in
-   `SDL3GameEngine.cpp`) were tuned for iPhone/iPad; validate on the tablet in a
-   real match (build a base, box-select, issue moves). The 8 px dead zone may be
-   too small at 2800×1752.
+1. **Real-gameplay touch validation.** As of `ffa4645e9` the translator mode-locks
+   two-finger pan vs pinch, uses DPI-scaled ~3 mm thresholds, and the main menu
+   auto-reveals on touch (fresh-boot single-tap verified). Still untested: gesture
+   feel in a REAL match (build a base, box-select, issue moves, pan/zoom mid-battle).
+   Debugging aid: the tap pipeline is traceable end-to-end — see the [TOUCHDBG]
+   pattern in this commit's history (instrumentation was added and removed in the
+   ffa4645e9 session; git log -S TOUCHDBG shows the probe points).
 2. **Kill the doomed first device** (quality + boot time) — tracked in
    [issue #8](https://github.com/fadi-labib/Generals-Android/issues/8). ⚠️ **ROOT-CAUSED,
    and it's a DXVK/Turnip driver task — NOT an engine one.** Two 2026-07-07 investigations

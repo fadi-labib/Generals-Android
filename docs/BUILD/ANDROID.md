@@ -399,6 +399,13 @@ real and are fixed, not never-encountered):
   on Android (`GX_TOUCH_UI` in `SDL3GameEngine.cpp`); a real finger activates in one tap.
   (`adb shell input tap` still needs two — its 0 ms down-up delivers hover+click in one
   frame; use `input swipe x y x y 150` to emulate a real tap.)
+- ~~First tap after boot swallowed / pan-zoom interference / jitter drag-boxes~~ → three
+  gesture fixes (commit `ffa4645e9`): the main menu auto-reveals on touch platforms
+  (desktop hides it until the mouse moves, which cost touch users their entire first
+  tap mid-reveal-transition); two-finger pan and pinch now mode-lock (whichever moves
+  first wins — no more zoom ticks while panning or camera drift while pinching); and
+  gesture thresholds are physical (~3 mm, DPI-scaled) instead of 8 px (~0.7 mm on this
+  panel — fingertip jitter turned taps into accidental drag-boxes).
 - ~~Silent audio~~ → Android inherited the Linux desktop `ALSOFT_DRIVERS=pulse,alsa,...`
   workaround (`__ANDROID__` also defines `__linux__`), forcing OpenAL to the null backend.
   Android now keeps default selection and picks OpenSL ES; audio_flinger shows live tracks.
