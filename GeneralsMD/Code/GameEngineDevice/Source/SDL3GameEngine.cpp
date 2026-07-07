@@ -62,7 +62,18 @@ extern Mouse *TheMouse;
 extern Keyboard *TheKeyboard;
 extern GameWindowManager *TheWindowManager;
 
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+// GeneralsX @android FadiLabib 07/07/2026 - Touch-first platforms. Android reuses
+// the iOS touch->mouse gesture translator and the background render pause verbatim:
+// both are pure SDL (finger events in, synthetic mouse events out), and Android has
+// the same constraints (single-tap must hover before clicking; presenting while the
+// ANativeWindow is gone after onPause is fatal, like the Metal drawable on iOS).
+#if (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) || defined(__ANDROID__)
+#define GX_TOUCH_UI 1
+#else
+#define GX_TOUCH_UI 0
+#endif
+
+#if GX_TOUCH_UI
 #include <atomic>
 
 // ---------------------------------------------------------------------------
@@ -367,7 +378,7 @@ void updateTouchLongPress(SDL3Mouse *mouse, SDL_Window *window)
 }
 
 } // anonymous namespace
-#endif // TARGET_OS_IPHONE
+#endif // GX_TOUCH_UI
 
 namespace {
 
@@ -494,7 +505,7 @@ void SDL3GameEngine::init(void)
 	m_IsInitialized = true;
 	m_IsActive = true;
 
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#if GX_TOUCH_UI
 	// Lifecycle events can fire outside the poll cycle on iOS; catch them
 	// immediately so rendering halts before the process is suspended.
 	SDL_AddEventWatch(iosLifecycleWatcher, nullptr);
@@ -526,7 +537,7 @@ void SDL3GameEngine::reset(void)
 void SDL3GameEngine::update(void)
 {
 	pollSDL3Events();
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#if GX_TOUCH_UI
 	// Pause sim + render while backgrounded OR inactive (see iosLifecycleWatcher).
 	// Acquiring a Metal drawable in these windows fights iOS for the layer and,
 	// across repeated suspend/switcher cycles, crashes MoltenVK. Keep polling so
@@ -617,7 +628,7 @@ void SDL3GameEngine::pollSDL3Events(void)
 				}
 				break;
 
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#if GX_TOUCH_UI
 			// App suspension/resume: mirror the desktop focus handling so audio
 			// and mouse state pause cleanly (the render gate lives in update()).
 			case SDL_EVENT_DID_ENTER_BACKGROUND:
@@ -668,7 +679,7 @@ void SDL3GameEngine::pollSDL3Events(void)
 			case SDL_EVENT_MOUSE_BUTTON_DOWN:
 			case SDL_EVENT_MOUSE_BUTTON_UP:
 			case SDL_EVENT_MOUSE_WHEEL:
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#if GX_TOUCH_UI
 				// Belt-and-braces: drop SDL's own touch-synthesized mouse events.
 				// The gesture translator owns all touch->mouse conversion; double
 				// delivery would produce phantom second clicks.
@@ -686,7 +697,7 @@ void SDL3GameEngine::pollSDL3Events(void)
 				}
 				break;
 
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#if GX_TOUCH_UI
 			case SDL_EVENT_FINGER_DOWN:
 			case SDL_EVENT_FINGER_MOTION:
 			case SDL_EVENT_FINGER_UP:
@@ -712,7 +723,7 @@ void SDL3GameEngine::pollSDL3Events(void)
 		updateTextInputState();
 	}
 
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#if GX_TOUCH_UI
 	// Poll the long-press timer every frame; a stationary finger emits no events.
 	if (TheMouse && m_SDLWindow) {
 		SDL3Mouse* touchMouse = dynamic_cast<SDL3Mouse*>(TheMouse);
