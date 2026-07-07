@@ -1,0 +1,28 @@
+# Generals Zero Hour on Android
+
+> Command & Conquer Generals: Zero Hour (2003) running natively on Android — the real
+> engine compiled for arm64 from EA's GPL v3 source release, rendering DirectX 8 via
+> DXVK to Vulkan 1.3 on a bundled Mesa Turnip driver loaded rootlessly with
+> libadrenotools. No emulation, no streaming. Playable skirmish matches at 30-60 FPS
+> on Qualcomm Adreno 6xx/7xx devices (tested: Galaxy Tab S7+). Touch controls built
+> for RTS: tap-select, drag-box, long-press right-click, two-finger pan, pinch zoom.
+> No game assets included — players supply their own Zero Hour copy (sold on Steam).
+
+Key facts: requires an arm64 Android device with a Qualcomm Adreno 6xx/7xx GPU; no
+root required; the APK is debug-signed for sideloading; the port descends from Ammaar
+Reshi's iOS/iPadOS port and the fbraz3/GeneralsX macOS/Linux lineage; engine code is
+GPL v3; game assets are not included or licensed.
+
+## Docs
+
+- [Android build guide](https://fadi-labib.github.io/Generals-Android/BUILD/ANDROID/): toolchain, rendering pipeline (DXVK + Turnip + adrenotools), device setup, debugging toolbox, known issues
+- [FAQ](https://fadi-labib.github.io/Generals-Android/FAQ/): direct answers — supported devices, root, assets, legality, performance
+- [Touch controls](https://fadi-labib.github.io/Generals-Android/port/TOUCH_CONTROLS/): the touch-to-mouse gesture system shared with iOS — design decisions and debugging map
+- [Porting playbook](https://fadi-labib.github.io/Generals-Android/port/PORTING_PLAYBOOK/): engineering log of the iOS port this one descends from
+- [Porting patterns](https://fadi-labib.github.io/Generals-Android/port/PORTING_PATTERNS/): generalized methodology for porting classic Windows games
+
+## Code
+
+- [Repository](https://github.com/fadi-labib/Generals-Android): source, issues, releases (APK downloads)
+- [Releases](https://github.com/fadi-labib/Generals-Android/releases): sideloadable APKs (no game assets included)
+- [Parent project (iOS/iPadOS/macOS)](https://github.com/ammaarreshi/Generals-Mac-iOS-iPad): Ammaar Reshi's port this one builds on

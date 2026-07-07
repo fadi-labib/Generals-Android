@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{#
+  GeneralsX @docs FadiLabib 07/07/2026 - Social/link-preview and answer-engine meta.
+  og:image is a pre-rendered 1200x630 card (docs/assets/og-card.jpg) so shares on
+  Discord/Reddit/X show the in-game screenshot instead of a bare text link.
+#}
+{% block extrahead %}
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="{{ config.site_name }}" />
+  <meta property="og:title" content="{{ page.title | default(config.site_name) }} — {{ config.site_name }}" />
+  <meta property="og:description" content="{{ page.meta.description | default(config.site_description) }}" />
+  <meta property="og:url" content="{{ page.canonical_url }}" />
+  <meta property="og:image" content="{{ config.site_url }}assets/og-card.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{{ page.title | default(config.site_name) }}" />
+  <meta name="twitter:description" content="{{ page.meta.description | default(config.site_description) }}" />
+  <meta name="twitter:image" content="{{ config.site_url }}assets/og-card.jpg" />
+{% endblock %}

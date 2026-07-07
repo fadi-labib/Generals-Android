@@ -12,6 +12,7 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: overrides
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -50,6 +51,7 @@ exclude_docs: |
 # syncing from upstream stays conflict-free — the tag lives ONLY in this nav title.
 nav:
   - Home: index.md
+  - FAQ: FAQ.md
   - Play:
       - Get the game files (upstream): HOWTO/GETTING_THE_GAME_FILES.md
       - Installation (upstream): HOWTO/INSTALLATION.md
