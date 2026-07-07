@@ -152,7 +152,9 @@ struct TouchState {
 		PENDING,     // finger1 down, gesture identity not yet known, nothing sent
 		DRAGGING,    // finger1 drag in progress, LMB held
 		LONGPRESSED, // long-press fired (RMB click sent), swallow until lift
-		PAN          // two-finger camera pan, RMB held
+		TWO_PENDING, // two fingers down, pan-vs-pinch not yet decided, nothing sent
+		PAN,         // two-finger camera pan, RMB held (pinch ignored)
+		PINCH        // two-finger zoom, wheel ticks only (pan ignored)
 	};
 
 	Phase phase = IDLE;
@@ -162,6 +164,8 @@ struct TouchState {
 	float lastX = 0.0f, lastY = 0.0f;   // finger1 latest position
 	float panX = 0.0f, panY = 0.0f;     // pan centroid
 	float pinchDist = 0.0f;             // finger distance at last wheel step
+	float twoCx0 = 0.0f, twoCy0 = 0.0f; // centroid at second-finger down (px)
+	float twoDist0 = 0.0f;              // finger distance at second-finger down (px)
 	Uint64 downTicks = 0;
 	float f1x = 0.0f, f1y = 0.0f, f2x = 0.0f, f2y = 0.0f; // normalized per finger
 };
@@ -169,8 +173,38 @@ struct TouchState {
 TouchState s_touch;
 
 const Uint64 LONG_PRESS_MS = 600;
-const float PINCH_STEP_RATIO = 0.06f;  // 6% distance change per wheel tick
-const float TAP_DEAD_ZONE_PX = 8.0f;   // jitter below this keeps a tap a tap
+// GeneralsX @android FadiLabib 07/07/2026 - 3% per tick (was 6%): with the
+// pan/pinch mode lock below, zoom no longer fights camera pan, and the finer
+// step doubles the wheel-tick rate for a smoother zoom feel.
+const float PINCH_STEP_RATIO = 0.03f;  // 3% distance change per wheel tick
+
+// GeneralsX @android FadiLabib 07/07/2026 - Gesture thresholds in PHYSICAL size,
+// not pixels. The old fixed 8 px is ~0.7 mm on a Tab S7+ (2800x1752 @ ~274 ppi):
+// normal fingertip jitter crosses it, so taps kept committing as accidental
+// drag-boxes. 3 mm is a comfortable "deliberate movement" distance on every
+// tested panel. SDL_GetDisplayContentScale is 1.0 at the 160 dpi Android/desktop
+// baseline, so px/mm = 160 * scale / 25.4. Falls back to the old 8 px minimum if
+// the display query fails (returns 0).
+const float GESTURE_THRESHOLD_MM = 3.0f;
+
+float gestureThresholdPx(SDL_Window *window)
+{
+	static float cached = 0.0f;
+	if (cached > 0.0f) {
+		return cached;
+	}
+	float scale = SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(window));
+	if (scale <= 0.0f) {
+		scale = 1.0f;
+	}
+	const float pxPerMm = (160.0f * scale) / 25.4f;
+	float px = GESTURE_THRESHOLD_MM * pxPerMm;
+	if (px < 8.0f) {
+		px = 8.0f;  // never more sensitive than the old fixed value
+	}
+	cached = px;
+	return cached;
+}
 
 void sendSyntheticMouse(SDL3Mouse *mouse, SDL_Window *window, Uint32 type,
                         float x, float y, Uint8 button = 0, float wheelY = 0.0f)
@@ -209,13 +243,29 @@ void sendSyntheticMouse(SDL3Mouse *mouse, SDL_Window *window, Uint32 type,
 	mouse->addSDLEvent(&ev);
 }
 
+// GeneralsX @android FadiLabib 07/07/2026 - Two fingers no longer commit to a
+// combined pan+pinch immediately. The old code held RMB (camera scroll) AND
+// emitted wheel ticks (zoom) from the same two fingers at once, so a camera pan
+// leaked spurious zoom steps (the finger distance always wobbles) and a pinch
+// dragged the camera (the centroid always drifts) — the reported "pan feels
+// wrong" and "zoom is jumpy". Desktop can't scroll and zoom simultaneously
+// either, so we classify first: whichever crosses the movement threshold first
+// — centroid travel (pan) or finger-distance change (pinch) — locks the gesture
+// mode until a finger lifts. The loser is ignored for the rest of the gesture.
+void beginTwoPending(int winW, int winH)
+{
+	s_touch.twoCx0 = (s_touch.f1x + s_touch.f2x) * 0.5f * (float)winW;
+	s_touch.twoCy0 = (s_touch.f1y + s_touch.f2y) * 0.5f * (float)winH;
+	const float dx = (s_touch.f1x - s_touch.f2x) * (float)winW;
+	const float dy = (s_touch.f1y - s_touch.f2y) * (float)winH;
+	s_touch.twoDist0 = SDL_sqrtf(dx * dx + dy * dy);
+	s_touch.phase = TouchState::TWO_PENDING;
+}
+
 void beginPan(SDL3Mouse *mouse, SDL_Window *window, int winW, int winH)
 {
 	s_touch.panX = (s_touch.f1x + s_touch.f2x) * 0.5f * (float)winW;
 	s_touch.panY = (s_touch.f1y + s_touch.f2y) * 0.5f * (float)winH;
-	const float dx = (s_touch.f1x - s_touch.f2x) * (float)winW;
-	const float dy = (s_touch.f1y - s_touch.f2y) * (float)winH;
-	s_touch.pinchDist = SDL_sqrtf(dx * dx + dy * dy);
 	sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, s_touch.panX, s_touch.panY);
 	sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_DOWN,
 	                   s_touch.panX, s_touch.panY, SDL_BUTTON_RIGHT);
@@ -254,23 +304,25 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 			sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, px, py);
 		}
 		else if (s_touch.phase == TouchState::PENDING) {
-			// Second finger before the first committed to anything: pure pan,
-			// no left-click ever happened.
+			// Second finger before the first committed to anything: a two-finger
+			// gesture (pan or pinch — decided by whichever moves first), no
+			// left-click ever happened.
 			s_touch.finger2 = event.tfinger.fingerID;
 			s_touch.f2x = event.tfinger.x;
 			s_touch.f2y = event.tfinger.y;
-			beginPan(mouse, window, winW, winH);
+			beginTwoPending(winW, winH);
 		}
 		else if (s_touch.phase == TouchState::DRAGGING) {
-			// Second finger during a live drag: finish the drag-box, then pan.
+			// Second finger during a live drag: finish the drag-box, then decide
+			// pan vs pinch.
 			s_touch.finger2 = event.tfinger.fingerID;
 			s_touch.f2x = event.tfinger.x;
 			s_touch.f2y = event.tfinger.y;
 			sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_UP,
 			                   s_touch.lastX, s_touch.lastY, SDL_BUTTON_LEFT);
-			beginPan(mouse, window, winW, winH);
+			beginTwoPending(winW, winH);
 		}
-		// LONGPRESSED / PAN with extra fingers: ignored
+		// LONGPRESSED / TWO_PENDING / PAN / PINCH with extra fingers: ignored
 		break;
 
 	case SDL_EVENT_FINGER_MOTION:
@@ -279,7 +331,10 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 			s_touch.f1y = event.tfinger.y;
 			s_touch.lastX = px;
 			s_touch.lastY = py;
-		} else if (s_touch.phase == TouchState::PAN && event.tfinger.fingerID == s_touch.finger2) {
+		} else if ((s_touch.phase == TouchState::TWO_PENDING ||
+		            s_touch.phase == TouchState::PAN ||
+		            s_touch.phase == TouchState::PINCH) &&
+		           event.tfinger.fingerID == s_touch.finger2) {
 			s_touch.f2x = event.tfinger.x;
 			s_touch.f2y = event.tfinger.y;
 		} else {
@@ -288,7 +343,7 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 
 		if (s_touch.phase == TouchState::PENDING && event.tfinger.fingerID == s_touch.finger1) {
 			const float moved = SDL_fabsf(px - s_touch.downX) + SDL_fabsf(py - s_touch.downY);
-			if (moved >= TAP_DEAD_ZONE_PX) {
+			if (moved >= gestureThresholdPx(window)) {
 				// Commit to a drag: anchor the LMB at the original touch point so
 				// drag-boxes start where the finger first landed.
 				sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, s_touch.downX, s_touch.downY);
@@ -301,22 +356,50 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 		else if (s_touch.phase == TouchState::DRAGGING && event.tfinger.fingerID == s_touch.finger1) {
 			sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, px, py);
 		}
+		else if (s_touch.phase == TouchState::TWO_PENDING) {
+			// Classify: pan (centroid travel) vs pinch (distance change) —
+			// whichever crosses the threshold first wins the whole gesture.
+			const float cx = (s_touch.f1x + s_touch.f2x) * 0.5f * (float)winW;
+			const float cy = (s_touch.f1y + s_touch.f2y) * 0.5f * (float)winH;
+			const float dx = (s_touch.f1x - s_touch.f2x) * (float)winW;
+			const float dy = (s_touch.f1y - s_touch.f2y) * (float)winH;
+			const float dist = SDL_sqrtf(dx * dx + dy * dy);
+			const float threshold = gestureThresholdPx(window);
+
+			const float centroidMoved = SDL_fabsf(cx - s_touch.twoCx0) + SDL_fabsf(cy - s_touch.twoCy0);
+			const float distChanged = SDL_fabsf(dist - s_touch.twoDist0);
+
+			if (distChanged >= threshold && distChanged > centroidMoved) {
+				// Pinch wins: zoom only, camera never moves.
+				s_touch.pinchDist = dist;
+				s_touch.phase = TouchState::PINCH;
+			}
+			else if (centroidMoved >= threshold) {
+				// Pan wins: RMB camera scroll only, zoom never fires.
+				beginPan(mouse, window, winW, winH);
+			}
+		}
 		else if (s_touch.phase == TouchState::PAN) {
 			const float cx = (s_touch.f1x + s_touch.f2x) * 0.5f * (float)winW;
 			const float cy = (s_touch.f1y + s_touch.f2y) * 0.5f * (float)winH;
 			sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, cx, cy);
 			s_touch.panX = cx;
 			s_touch.panY = cy;
-
+		}
+		else if (s_touch.phase == TouchState::PINCH) {
+			const float cx = (s_touch.f1x + s_touch.f2x) * 0.5f * (float)winW;
+			const float cy = (s_touch.f1y + s_touch.f2y) * 0.5f * (float)winH;
 			const float dx = (s_touch.f1x - s_touch.f2x) * (float)winW;
 			const float dy = (s_touch.f1y - s_touch.f2y) * (float)winH;
 			const float dist = SDL_sqrtf(dx * dx + dy * dy);
 			if (s_touch.pinchDist > 1.0f) {
 				const float ratio = dist / s_touch.pinchDist;
 				if (ratio > 1.0f + PINCH_STEP_RATIO) {
+					sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, cx, cy);
 					sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_WHEEL, cx, cy, 0, 1.0f);
 					s_touch.pinchDist = dist;
 				} else if (ratio < 1.0f - PINCH_STEP_RATIO) {
+					sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_MOTION, cx, cy);
 					sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_WHEEL, cx, cy, 0, -1.0f);
 					s_touch.pinchDist = dist;
 				}
@@ -327,7 +410,10 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 	case SDL_EVENT_FINGER_UP:
 	case SDL_EVENT_FINGER_CANCELED:
 		if (event.tfinger.fingerID != s_touch.finger1 &&
-		    !(s_touch.phase == TouchState::PAN && event.tfinger.fingerID == s_touch.finger2)) {
+		    !((s_touch.phase == TouchState::TWO_PENDING ||
+		       s_touch.phase == TouchState::PAN ||
+		       s_touch.phase == TouchState::PINCH) &&
+		      event.tfinger.fingerID == s_touch.finger2)) {
 			break;
 		}
 		switch (s_touch.phase) {
@@ -352,6 +438,7 @@ void handleTouchEvent(SDL3Mouse *mouse, SDL_Window *window, const SDL_Event &eve
 				sendSyntheticMouse(mouse, window, SDL_EVENT_MOUSE_BUTTON_UP,
 				                   s_touch.panX, s_touch.panY, SDL_BUTTON_RIGHT);
 				break;
+			// TWO_PENDING / PINCH hold no buttons — nothing to release.
 			default:
 				break;
 		}

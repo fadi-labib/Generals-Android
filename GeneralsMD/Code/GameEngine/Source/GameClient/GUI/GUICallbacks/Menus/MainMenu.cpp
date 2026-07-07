@@ -934,6 +934,25 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 			initialGadgetDelay--;
 	}
 
+#if (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) || defined(__ANDROID__)
+	// GeneralsX @android FadiLabib 07/07/2026 - Touch has no hover. On desktop the
+	// menu hides until the mouse moves 20px (MainMenuInput's GWM_MOUSE_POS handler);
+	// on a touch screen that costs the user their ENTIRE first tap: the tap's hover
+	// motion triggers the reveal, and its deferred click lands mid-reveal-transition
+	// while the buttons are still transition-hidden (winPointInChild skips hidden
+	// windows), so the click is swallowed. Auto-reveal once the intro logo delay has
+	// elapsed — this is the engine's own commented-out auto-show path, revived for
+	// touch platforms. justEntered==FALSE means initialGadgetDelay already ran down.
+	if( notShown && !justEntered && dropDownWindows[DROPDOWN_MAIN] )
+	{
+		dropDownWindows[DROPDOWN_MAIN]->winHide(FALSE);
+		TheTransitionHandler->setGroup("MainMenuFade", TRUE);
+		TheTransitionHandler->setGroup("MainMenuDefaultMenu");
+		TheMouse->setVisibility(TRUE);
+		notShown = FALSE;
+	}
+#endif
+
 	if(dontAllowTransitions && TheTransitionHandler->isFinished())
 		dontAllowTransitions = FALSE;
 
