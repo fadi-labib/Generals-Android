@@ -45,32 +45,35 @@ exclude_docs: |
   WORKDIR/
   superpowers/
 
+# Nav-title convention: entries marked "(upstream)" are inherited from the parent
+# project lineage (ammaarreshi / fbraz3) and are kept textually unmodified here so
+# syncing from upstream stays conflict-free — the tag lives ONLY in this nav title.
 nav:
   - Home: index.md
   - Play:
-      - Get the game files: HOWTO/GETTING_THE_GAME_FILES.md
-      - Installation: HOWTO/INSTALLATION.md
-      - Known issues: KNOWN_ISSUES/README.md
+      - Get the game files (upstream): HOWTO/GETTING_THE_GAME_FILES.md
+      - Installation (upstream): HOWTO/INSTALLATION.md
+      - Known issues (upstream): KNOWN_ISSUES/README.md
   - Build:
       - Android: BUILD/ANDROID.md
-      - macOS: BUILD/MACOS.md
-      - Linux: BUILD/LINUX.md
+      - macOS (upstream): BUILD/MACOS.md
+      - Linux (upstream): BUILD/LINUX.md
   - Porting deep-dives:
-      - Porting playbook (iOS): port/PORTING_PLAYBOOK.md
-      - Porting patterns: port/PORTING_PATTERNS.md
+      - Porting playbook, iOS (upstream): port/PORTING_PLAYBOOK.md
+      - Porting patterns (upstream): port/PORTING_PATTERNS.md
       - Touch controls: port/TOUCH_CONTROLS.md
-      - Release checklist: port/RELEASE_CHECKLIST.md
+      - Release checklist (upstream): port/RELEASE_CHECKLIST.md
   - Reference:
-      - Command-line parameters: ETC/COMMAND_LINE_PARAMETERS.md
-      - SagePatch: PATCHES/SAGEPATCH.md
-      - SagePatch configuration: HOWTO/SAGEPATCH_CONFIGURATION.md
-      - Russian localization: HOWTO/RUSSIAN_LOCALIZATION.md
-      - HOWTO index: HOWTO/README.md
-      - 'Archive: Linux graphics phase 1': ETC/archive/PHASE01_LINUX_GRAPHICS.md
+      - Command-line parameters (upstream): ETC/COMMAND_LINE_PARAMETERS.md
+      - SagePatch (upstream): PATCHES/SAGEPATCH.md
+      - SagePatch configuration (upstream): HOWTO/SAGEPATCH_CONFIGURATION.md
+      - Russian localization (upstream): HOWTO/RUSSIAN_LOCALIZATION.md
+      - HOWTO index (upstream): HOWTO/README.md
+      - 'Archive: Linux graphics phase 1 (upstream)': ETC/archive/PHASE01_LINUX_GRAPHICS.md
   - Dev blog:
       - 2026-07: DEV_BLOG/2026-07-DIARY.md
-      - 2026-06: DEV_BLOG/2026-06-DIARY.md
-      - 2026-05: DEV_BLOG/2026-05-DIARY.md
-      - 2026-04: DEV_BLOG/2026-04-DIARY.md
-      - 2026-03: DEV_BLOG/2026-03-DIARY.md
-      - 2026-02: DEV_BLOG/2026-02-DIARY.md
+      - 2026-06 (upstream): DEV_BLOG/2026-06-DIARY.md
+      - 2026-05 (upstream): DEV_BLOG/2026-05-DIARY.md
+      - 2026-04 (upstream): DEV_BLOG/2026-04-DIARY.md
+      - 2026-03 (upstream): DEV_BLOG/2026-03-DIARY.md
+      - 2026-02 (upstream): DEV_BLOG/2026-02-DIARY.md
