@@ -808,7 +808,7 @@ int main(int argc, char* argv[])
 		ApplicationHWnd = (HWND)TheSDL3Window;
 		fprintf(stderr, "INFO: SDL3 window created successfully\n");
 
-#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#if (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE) || defined(__ANDROID__)
 		// Match the game's internal resolution to the phone screen's aspect ratio.
 		// Without this the engine runs its 4:3 default inside the 19.5:9 display:
 		// pillarboxed picture and a skewed window->game coordinate mapping. Height
@@ -829,7 +829,20 @@ int main(int argc, char* argv[])
 			// 1:1 into the native-resolution swapchain, and fonts/UI rescale via
 			// the engine's resolution-aware font scaling (GlobalLanguage).
 			int winW = 0, winH = 0;
+#if defined(__ANDROID__)
+			// GeneralsX @android FadiLabib 07/07/2026 - The fullscreen window's size
+			// isn't laid out yet at this point on Android (surface creation is
+			// deferred), so query the panel's native mode directly — always valid.
+			// Force landscape dims (the app is orientation-locked) so a portrait-
+			// reported mode still yields xres>yres. Measured 8.3% black pillarbox
+			// bars each side without this (4:3 default in a 16:10 panel).
+			if (const SDL_DisplayMode *dm = SDL_GetCurrentDisplayMode(SDL_GetPrimaryDisplay())) {
+				winW = dm->w > dm->h ? dm->w : dm->h;
+				winH = dm->w > dm->h ? dm->h : dm->w;
+			}
+#else
 			SDL_GetWindowSizeInPixels(TheSDL3Window, &winW, &winH);
+#endif
 			if (!userSetRes && winW > 0 && winH > 0 && winW > winH) {
 				static char xresVal[16], yresVal[16];
 				static char xresFlag[] = "-xres";
@@ -852,7 +865,7 @@ int main(int argc, char* argv[])
 				newArgv[n] = nullptr;
 				__argv = newArgv;
 				__argc = n;
-				fprintf(stderr, "INFO: iOS internal resolution set to %sx%s (window %dx%d)\n",
+				fprintf(stderr, "INFO: internal resolution set to %sx%s (screen %dx%d)\n",
 				        xresVal, yresVal, winW, winH);
 			}
 		}
