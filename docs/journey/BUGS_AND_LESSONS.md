@@ -4,8 +4,9 @@ description: Every bug the Android port found — symptom, root cause, fix, upst
 
 # Bugs & Lessons
 
-> The complete defect ledger of the Android port, and what each one teaches.
-> Narrative version: [The Android Journey](ANDROID_JOURNEY.md).
+!!! abstract "What this is"
+    The complete defect ledger of the Android port, and what each one teaches.
+    Narrative version: [The Android Journey](ANDROID_JOURNEY.md).
 
 ## The ledger
 

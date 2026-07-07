@@ -4,9 +4,10 @@ description: The full story of porting C&C Generals Zero Hour to Android in unde
 
 # The Android Journey
 
-> How a 2003 DirectX 8 RTS went from "never ran on Android" to a public APK in about
-> a day of wall-clock work — told honestly, walls and all. The companion page,
-> [Bugs & Lessons](BUGS_AND_LESSONS.md), catalogs every defect found along the way.
+!!! abstract "What this is"
+    How a 2003 DirectX 8 RTS went from "never ran on Android" to a public APK in
+    about a day of wall-clock work — told honestly, walls and all. The companion
+    page, [Bugs & Lessons](BUGS_AND_LESSONS.md), catalogs every defect found.
 
 ## Day 0 — the audit and the bet (July 6)
 

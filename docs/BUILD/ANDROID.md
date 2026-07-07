@@ -578,4 +578,4 @@ Adreno flagships (Vulkan 1.3 floor). Codebase findings that fed this plan:
 
 ---
 
-*See the [Dev Blog](../../DEV_BLOG/) for detailed session-by-session technical notes.*
+*See the [Dev Blog](../DEV_BLOG/2026-07-DIARY.md) for detailed session-by-session technical notes.*
