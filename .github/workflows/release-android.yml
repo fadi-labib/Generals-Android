@@ -77,7 +77,9 @@ jobs:
           ./scripts/build/android/fetch-turnip.sh
           ./scripts/build/android/build-adrenotools.sh
           cmake --preset android-vulkan
-          cmake --build build/android-vulkan --target z_generals -j"$(nproc)"
+          # dxvk_d3d8_install builds the DXVK external project and copies
+          # libdxvk_d3d8/d3d9.so to the build root where package-android-zh.sh expects them.
+          cmake --build build/android-vulkan --target z_generals dxvk_d3d8_install -j"$(nproc)"
 
       - name: Package APK
         run: |
