@@ -12,6 +12,8 @@
 > **Continuing this work?** Read [ANDROID_HANDOVER.md](ANDROID_HANDOVER.md) first — the
 > mental model, debugging toolbox, traps, and prioritized next steps from the sessions
 > that got the port here.
+> Touch controls (gestures, state machine, design rationale, debugging):
+> [docs/port/TOUCH_CONTROLS.md](../port/TOUCH_CONTROLS.md).
 
 ## Prerequisites
 

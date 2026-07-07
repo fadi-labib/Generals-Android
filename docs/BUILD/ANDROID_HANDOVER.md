@@ -70,7 +70,7 @@ Five load-bearing mechanics, each of which broke the port until fixed:
 | File | Role |
 |---|---|
 | `GeneralsMD/Code/Main/SDL3Main.cpp` | Entry point: Turnip staging, env setup (`DXVK_WSI_DRIVER`, `DXVK_CONFIG`, adrenotools vars), SDL init, window creation |
-| `GeneralsMD/Code/GameEngineDevice/Source/SDL3GameEngine.cpp` | Event loop; `GX_TOUCH_UI` guards the touch→mouse gesture translator + background render-pause (shared with iOS) |
+| `GeneralsMD/Code/GameEngineDevice/Source/SDL3GameEngine.cpp` | Event loop; `GX_TOUCH_UI` guards the touch→mouse gesture translator + background render-pause (shared with iOS). Full design/debugging doc: [`docs/port/TOUCH_CONTROLS.md`](../port/TOUCH_CONTROLS.md) |
 | `Patches/dxvk-android.patch` | ALL DXVK changes (loader, WSI, meson, portability guards). Applied idempotently by `cmake/dx8.cmake` to the `references/fbraz3-dxvk` submodule |
 | `cmake/dx8.cmake` | Drives the DXVK meson cross-build inside the cmake build |
 | `scripts/build/android/*.sh` | env check, adrenotools build, Turnip fetch, APK packaging, asset push, headless replay harness |
