@@ -58,14 +58,20 @@ cmake --build build/android-vulkan --target z_generals -j$(nproc --ignore=1)
 Full guide (toolchain, debugging toolbox, traps):
 **[Android build guide](https://fadi-labib.github.io/Generals-Android/BUILD/ANDROID/)**.
 
-## The port in one paragraph
+## The port in five walls
 
-Five mechanics had to be discovered the hard way, each breaking the port until fixed:
-Vulkan 1.3 on a Vulkan 1.1 device (bundle Turnip, load it rootlessly), one Vulkan
-loader instead of two (SDL and DXVK each bring their own), the one-producer
-`ANativeWindow` rule (the engine's device-retry loop leaked it → black screen), shared
-libc++ across `.so` boundaries (or C++ exceptions vanish), and a zero-initialized heap
-(the 2003 code silently assumes it).
+Five mechanics had to be discovered the hard way — each broke the port until fixed:
+
+- **Vulkan 1.3 on a Vulkan 1.1 device** — the stock Adreno driver caps at 1.1, so
+  bundle Mesa Turnip and load it rootlessly (via libadrenotools).
+- **One Vulkan loader, not two** — SDL and DXVK each bring their own; the surface has
+  to be created through DXVK's or the instance dispatch mismatches.
+- **The one-producer `ANativeWindow` rule** — the engine's device-retry loop leaked the
+  connection → black screen. Fixed by deferring surface creation to first present.
+- **Shared libc++ across `.so` boundaries** — otherwise C++ exceptions and RTTI vanish
+  at the boundary and the real Vulkan error gets swallowed.
+- **A zero-initialized heap** — the 2003 code silently assumes `new` returns zeroed
+  memory; bionic's `malloc` doesn't.
 
 **The full story** — the renderer night, the 2 am black-screen hunt, the touch
 deep-dive, and 17 cataloged bugs with root causes:
