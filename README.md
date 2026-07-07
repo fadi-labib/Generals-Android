@@ -1,131 +1,139 @@
-# Command & Conquer Generals: Zero Hour — macOS, iOS, iPadOS & Android
+# Command & Conquer Generals: Zero Hour — Native on Android
 
-<img width="500" height="281" alt="IMG_3457_500" src="https://github.com/user-attachments/assets/aeaf6692-36e6-40c8-b9f8-8066d014ec4b" />
+[![APK](https://img.shields.io/github/v/release/fadi-labib/Generals-Android?include_prereleases&label=APK&color=3DDC84&logo=android&logoColor=white)](https://github.com/fadi-labib/Generals-Android/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/fadi-labib/Generals-Android/ci.yml?branch=main&label=CI)](https://github.com/fadi-labib/Generals-Android/actions)
+[![License: GPL v3](https://img.shields.io/badge/license-GPL%20v3-blue)](LICENSE.md)
+[![Platform](https://img.shields.io/badge/device-arm64%20·%20Adreno%206xx%2F7xx-orange)](docs/BUILD/ANDROID.md#devices-profiled)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
+[![Discussions](https://img.shields.io/github/discussions/fadi-labib/Generals-Android?color=8B5CF6)](https://github.com/fadi-labib/Generals-Android/discussions)
 
-**Zero Hour running natively on Apple Silicon Macs, iPhone, and iPad** — campaign,
-skirmish, and Generals Challenge, with touch controls built for RTS (tap-select,
-drag-box, long-press deselect, two-finger scroll, pinch zoom). No emulation: this
-is the real 2003 engine compiled for ARM64, rendering DirectX 8 →
-[DXVK](https://github.com/doitsujin/dxvk) → Vulkan →
-[MoltenVK](https://github.com/KhronosGroup/MoltenVK) → Metal.
-
-**And now Android** (2026-07-07): the same engine plays skirmish matches on a Galaxy
-Tab S7+ at ~30–60 FPS — DirectX 8 → DXVK → Vulkan 1.3 on a bundled
-[Mesa Turnip](https://docs.mesa3d.org/drivers/freedreno.html) driver, loaded
-rootlessly via [libadrenotools](https://github.com/bylaws/libadrenotools) because
-the stock Adreno driver only speaks Vulkan 1.1. See
-[docs/BUILD/ANDROID.md](docs/BUILD/ANDROID.md) for the build guide, the rendering
-pipeline, and what's left.
+**The real 2003 engine, compiled for arm64, playing skirmish matches on a tablet.**
+No emulation, no streaming: EA's GPL v3 source release, cross-built for Android,
+rendering DirectX 8 → [DXVK](https://github.com/doitsujin/dxvk) → Vulkan 1.3 on a
+bundled [Mesa Turnip](https://docs.mesa3d.org/drivers/freedreno.html) driver, loaded
+rootlessly with [libadrenotools](https://github.com/bylaws/libadrenotools) — because
+the stock Adreno driver only speaks Vulkan 1.1. Touch controls built for RTS:
+tap-select, drag-box, long-press right-click, two-finger pan, pinch zoom.
 
 ![Zero Hour skirmish on a Galaxy Tab S7+](docs/BUILD/screenshots/android-tab-s7plus-ingame.png)
 
-Built on EA's GPL v3 source release, standing on a chain of community work —
-[TheSuperHackers](https://github.com/TheSuperHackers/GeneralsGameCode),
-[Fighter19's original Unix port](https://github.com/Fighter19/CnC_Generals_Zero_Hour), and
-[fbraz3/GeneralsX](https://github.com/fbraz3/GeneralsX) — this fork adds the iOS/iPadOS
-port and a set of engine fixes. See [Lineage & credits](#lineage--credits) for who built
-what. The original GeneralsX README lives on the `upstream-main` branch.
+This port is a **human + AI collaboration**, and proudly so: the C++, the
+cross-builds, and the device debugging were done by
+[Claude Code](https://claude.com/claude-code), directed and playtested by a human
+who described symptoms, made every decision, and owned the result. The AI can't do
+this without human know-how; the human can't do it at this speed without the AI.
+The repo is built to keep working that way — see [Contributing](#contributing).
 
-**No game assets are included or distributed.** You need your own copy
+**No game assets are included or distributed.** You need your own copy of Zero Hour
 ([Steam](https://store.steampowered.com/app/2732960/), ~$5 on sale).
 
-## What this port actually involved
+## Get it
 
-"Porting" undersells how weird this journey was, so here's the honest shape of it.
-The lineage below built the foundation: EA's source release, the community's
-modernization, Fighter19's original Unix port, GeneralsX's macOS/Linux work.
-What did *not* exist was any of this on iOS — and iOS is a hostile place for a
-2003 Windows RTS:
+1. **Device**: arm64 Android with a Qualcomm **Adreno 6xx/7xx** GPU (tested: Galaxy
+   Tab S7+ / Adreno 650). Non-Adreno GPUs (Exynos/Xclipse, Mali) don't work yet —
+   [#9](https://github.com/fadi-labib/Generals-Android/issues/9).
+2. **APK**: grab the latest from [Releases](https://github.com/fadi-labib/Generals-Android/releases)
+   and sideload it (Samsung users: see the
+   [sideload gotcha](docs/BUILD/ANDROID.md#samsung-sideload-gotcha)).
+3. **Assets**: push your own game files to the device —
+   [`scripts/build/android/push-assets-android.sh`](scripts/build/android/push-assets-android.sh),
+   or see [Assets](docs/BUILD/ANDROID.md#assets) for the manual route.
 
-- **The engine assumes a writable filesystem wherever it lives.** iOS apps live in a
-  read-only, code-signed bundle. Every config write, cache, and save path had to be
-  rerouted — and the working directory bootstrapped from the bundle itself.
-- **The renderer speaks DirectX 8. The iPad speaks Metal.** In between: DXVK
-  translating D3D8→Vulkan, MoltenVK translating Vulkan→Metal — and DXVK had never
-  been built for iPhoneOS. That took a Meson cross-build and a patch to its Vulkan
-  loader, because iOS confines `dlopen` to the app bundle ([`Patches/dxvk-ios.patch`](Patches/dxvk-ios.patch)).
-- **iOS owns your process.** Open the app switcher and the OS seizes the Metal
-  drawable *without backgrounding you* — draw one more frame and you're dead on
-  resume. The whole render/sim loop learned to hold its breath.
-- **An RTS needs a mouse.** SDL3 (from the lineage below) delivers raw touch events;
-  the RTS semantics on top are new. Taps defer until the 2003 GUI has processed
-  hover (or menu buttons never highlight), a drag has to decide "selection box or
-  camera pan," long-press became right-click, and a cancelled touch must never
-  ghost-click a rally point.
-- **And then the bug hunts** — the best part. The minimap that rendered black
-  because a 2003 texture-format fallback silently dropped the alpha channel. The
-  EVA voice that went randomly mute because one zombie audio stream held a global
-  "don't talk over speech" flag while chirping forever. Every one chased to root
-  cause on a real device, fixed, and offered upstream.
+## What works, what doesn't
 
-**→ The war stories: [Porting Playbook §8 — the bug archaeology](docs/port/PORTING_PLAYBOOK.md#8-post-ship-bug-hunts-junejuly-2026--the-archaeology-section)**
-**→ The complete engineering log: [docs/port/PORTING_PLAYBOOK.md](docs/port/PORTING_PLAYBOOK.md)**
-**→ How to do this to another game: [docs/port/PORTING_PATTERNS.md](docs/port/PORTING_PATTERNS.md)**
+| | Status |
+|---|---|
+| Main menu + animated 3D shell map | ✅ |
+| Skirmish: lobby → live match, HUD, game clock | ✅ ~30–60 FPS at 2800×1752 |
+| Touch controls (single-tap, drag-box, long-press, pan, pinch) | ✅ |
+| Audio (OpenAL → OpenSL ES) | ✅ |
+| Lifecycle: HOME → resume, background render-pause | ✅ |
+| Campaign / Generals Challenge / video playback | ❓ untested — [#12](https://github.com/fadi-labib/Generals-Android/issues/12) |
+| Non-Adreno devices (Xclipse, Mali) | ❌ — [#9](https://github.com/fadi-labib/Generals-Android/issues/9) |
+| Two-device boot workaround (cosmetic, boot-time) | ⚠️ load-bearing — [#8](https://github.com/fadi-labib/Generals-Android/issues/8) |
 
-Worth saying plainly: this was a **human + AI collaboration**. The engineering —
-the C++, the cross-builds, the device debugging — was done by
-[Claude Code](https://claude.com/claude-code) (Anthropic's Claude, Fable model),
-directed and playtested by a human who described symptoms like *"the minimap is
-black"* and *"I hear chirping"* and owned every decision. Neither half ships this
-alone: one of us can't write C++, and the other can't hear the chirping.
+The honest, detailed list lives in
+[Known Issues & Remaining Work](docs/BUILD/ANDROID.md#known-issues--remaining-work).
 
-## Quick start — macOS
+## The porting story
 
-Prerequisites (one time):
+### What we inherited
+
+This project is the newest link in a chain, and says so gladly. From the lineage came
+the foundation this port stands on:
+
+- **EA's GPL v3 source release** — the engine itself.
+- **[TheSuperHackers/GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode)** —
+  build modernization (VC6 → modern toolchains) and cross-platform groundwork,
+  including the FFmpeg video and OpenAL audio backends by
+  [feliwir](https://github.com/feliwir).
+- **[Fighter19's Unix port](https://github.com/Fighter19/CnC_Generals_Zero_Hour)** —
+  SDL3 platform management, 64-bit fixes, and the DXVK renderer approach this
+  pipeline descends from.
+- **[fbraz3/GeneralsX](https://github.com/fbraz3/GeneralsX)** — the macOS/Linux port:
+  the platform compatibility layer, vcpkg build system, and DXVK integration this
+  repo cross-compiles.
+- **[ammaarreshi/Generals-Mac-iOS-iPad](https://github.com/ammaarreshi/Generals-Mac-iOS-iPad)**
+  — the direct parent: the iOS/iPadOS port whose touch→mouse gesture translator,
+  app-lifecycle handling, and DXVK cross-build methodology Android reuses nearly
+  verbatim. Want this game on a Mac, iPhone, or iPad? **Go there** — that's their
+  project and their story.
+
+### What we built here
+
+The Android renderer did not exist, and five load-bearing mechanics had to be
+discovered the hard way — each one broke the port until fixed
+([full detail](docs/BUILD/ANDROID.md#rendering-pipeline-phase-3)):
+
+1. **Vulkan 1.3 on a 1.1 device** — bundle Mesa Turnip in the APK and load it
+   rootlessly via libadrenotools, no root, no system driver replacement.
+2. **One Vulkan loader, not two** — SDL and DXVK each load their own Vulkan;
+   handing DXVK's `VkInstance` to SDL's loader corrupts surface creation. The
+   patched WSI creates the Android surface from DXVK's own loader.
+3. **An `ANativeWindow` accepts exactly one producer** — the engine's
+   device-retry loop leaked the window connection and every later device failed
+   forever (`VK_ERROR_NATIVE_WINDOW_IN_USE_KHR`, black screen). Fix: deferred
+   surface creation.
+4. **Shared libc++ across .so boundaries** — or DXVK's C++ exceptions vanish into
+   `catch(...)` with their RTTI, swallowing the real error message.
+5. **Zero-initialized heap** — the 2003 codebase silently relies on the desktop
+   pool allocator's memset; Bionic malloc is dirty, so Android allocates with
+   `calloc`.
+
+Plus everything around them: the arm64-android DXVK meson cross-build driven from
+cmake, the vcpkg overlay triplet, the Gradle/SDLActivity shell app and packaging
+pipeline, OpenSL audio bring-up, touch gesture enablement and tuning for a
+2800×1752 panel, CI (compile-check on every PR) and tag-triggered APK releases.
+
+### What flowed back
+
+Bugs found on Android that were latent everywhere: uninitialized-member crashes
+(`Pathfinder`, `W3DBridgeBuffer`, `W3DSmudgeManager`), null back-buffer guards, an
+`__ANDROID__`-implies-`__linux__` audio trap, and a stderr log pump that filters
+~85% of boot spam. Fixes are offered upstream.
+
+### What's next
+
+The roadmap is the issue tracker — labels mark the entry points:
+[`good first issue`](https://github.com/fadi-labib/Generals-Android/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) ·
+[`ai-ready`](https://github.com/fadi-labib/Generals-Android/issues?q=is%3Aissue+is%3Aopen+label%3Aai-ready) ·
+[`help wanted`](https://github.com/fadi-labib/Generals-Android/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22).
+Highlights: gesture tuning in real matches
+([#11](https://github.com/fadi-labib/Generals-Android/issues/11)), performance
+headroom ([#13](https://github.com/fadi-labib/Generals-Android/issues/13)), campaign
+and video testing ([#12](https://github.com/fadi-labib/Generals-Android/issues/12)),
+the Turnip device-lifecycle mystery
+([#8](https://github.com/fadi-labib/Generals-Android/issues/8)), and the big one —
+non-Adreno devices ([#9](https://github.com/fadi-labib/Generals-Android/issues/9)).
+
+## Build from source
+
+Ubuntu host, Android NDK r27 + SDK, Gradle 8.9, JDK 21, vcpkg. Full guide with
+troubleshooting, device setup, and the debugging toolbox:
+**[docs/BUILD/ANDROID.md](docs/BUILD/ANDROID.md)**.
 
 ```sh
-# Toolchain
-xcode-select --install
-brew install cmake ninja meson pkgconf
-brew install --cask steamcmd
-
-# vcpkg (full clone — a shallow clone breaks manifest baselines)
-git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
-export VCPKG_ROOT=~/vcpkg          # add to your shell profile
-
-# LunarG Vulkan SDK (NOT the Homebrew cask) — https://vulkan.lunarg.com/sdk/home
-export VULKAN_SDK=$HOME/VulkanSDK/<version>/macOS   # add to your shell profile
-```
-
-Clone, build, get assets, play:
-
-```sh
-git clone https://github.com/ammaarreshi/Generals-Mac-iOS-iPad.git GeneralsX
-cd GeneralsX
-./scripts/build/macos/build-macos-zh.sh     # checks deps, configures, builds
-./scripts/build/macos/deploy-macos-zh.sh    # creates ~/GeneralsX/GeneralsZH + run.sh
-./scripts/get-assets.sh <your_steam_username>   # fetches game data you own
-cd ~/GeneralsX/GeneralsZH && ./run.sh -win
-```
-
-## Quick start — iPhone / iPad
-
-On top of the macOS prerequisites: full Xcode (signed into your Apple ID),
-`brew install xcodegen`, and a (free or paid) Apple Developer team.
-
-```sh
-cd GeneralsX
-git submodule update --init references/fbraz3-dxvk   # iOS DXVK is built from this + Patches/dxvk-ios.patch
-./scripts/build/ios/fetch-moltenvk.sh                # pinned MoltenVK.framework (checksummed)
-./scripts/build/ios/stage-fonts.sh                   # Liberation fonts, renamed as the game expects
-cmake --preset ios-vulkan
-cmake --build build/ios-vulkan --target z_generals
-GX_TEAM_ID=<your-team-id> GX_BUNDLE_ID=com.you.generalszh \
-    ./scripts/build/ios/package-ios-zh.sh --install  # assembles, signs, installs
-```
-
-Find your team id in Xcode → Settings → Accounts. Assets ship inside the app
-bundle (self-contained install); `--dev` skips the ~2.7 GB copy for fast code
-iteration.
-
-## Quick start — Android (experimental)
-
-Requires an **arm64 device with a Qualcomm Adreno 6xx/7xx GPU** (tested: Galaxy Tab
-S7+ / Adreno 650), Ubuntu host, Android NDK r27 + SDK, Gradle 8.9, JDK 21, vcpkg.
-Full prerequisites and troubleshooting: [docs/BUILD/ANDROID.md](docs/BUILD/ANDROID.md).
-
-```sh
-cd GeneralsX
+git clone https://github.com/fadi-labib/Generals-Android.git && cd Generals-Android
 git submodule update --init --recursive references/fbraz3-dxvk references/libadrenotools
 cmake --preset android-vulkan
 cmake --build build/android-vulkan --target z_generals -j$(nproc --ignore=1)
@@ -135,84 +143,51 @@ cmake --build build/android-vulkan --target z_generals -j$(nproc --ignore=1)
 ./scripts/build/android/push-assets-android.sh  # your own game files → /sdcard/GeneralsZH
 ```
 
-Status: menus, shell map, and live skirmish matches render and play, with the same
-touch gestures as iOS (tap-select, drag-box, long-press right-click, two-finger
-pan, pinch zoom) and OpenSL ES audio. Non-Adreno GPUs (e.g. Samsung Xclipse)
-aren't supported yet — the honest list lives in
-[Known issues & remaining work](docs/BUILD/ANDROID.md#known-issues--remaining-work).
+## Porting a 2003 Windows game yourself?
 
-## Where things are
+The lineage wrote it down so you don't have to rediscover it:
 
-| Path | What it is |
-|---|---|
-| [`docs/port/PORTING_PLAYBOOK.md`](docs/port/PORTING_PLAYBOOK.md) | The complete engineering log of this port: every failure mode, root cause, fix — start with [§8, the bug archaeology](docs/port/PORTING_PLAYBOOK.md#8-post-ship-bug-hunts-junejuly-2026--the-archaeology-section): the black minimap, the silent EVA lines, and the chirp |
-| `docs/port/PORTING_PATTERNS.md` | Generalized methodology for porting classic Windows games to Apple platforms |
-| [`docs/port/TOUCH_CONTROLS.md`](docs/port/TOUCH_CONTROLS.md) | The touch control system (iOS + Android): gestures, state machine, every design decision and its reason, debugging map |
-| `docs/port/RELEASE_CHECKLIST.md` | Gate for public release |
-| `scripts/get-assets.sh` | Steam asset fetcher (your own copy; app 2732960) |
-| `scripts/build/macos/`, `scripts/build/ios/`, `scripts/build/android/` | Build, deploy, packaging pipelines |
-| `ios/` | XcodeGen signing-stub project + `ios/config/` (staged Options.ini, dxvk.conf) |
-| `android/` | Gradle shell app (SDLActivity subclass) the game's `libmain.so` runs inside |
-| [`docs/BUILD/ANDROID.md`](docs/BUILD/ANDROID.md) | Android build guide: toolchain, DXVK/Turnip pipeline, device setup, known issues |
-| [`docs/BUILD/ANDROID_HANDOVER.md`](docs/BUILD/ANDROID_HANDOVER.md) | Handover for whoever (human or AI) continues the Android port: mental model, debugging toolbox, traps, prioritized next steps |
-| `Patches/dxvk-ios.patch` | DXVK changes the iOS d3d8/d3d9 dylibs are built from (applied via the local-fork build) |
-| `Patches/dxvk-android.patch` | DXVK changes for Android: Turnip-via-adrenotools Vulkan loader + single-loader Android WSI surface path |
+- [docs/port/PORTING_PLAYBOOK.md](docs/port/PORTING_PLAYBOOK.md) — the complete
+  engineering log of the iOS port this one descends from: every failure mode, root
+  cause, fix.
+- [docs/port/PORTING_PATTERNS.md](docs/port/PORTING_PATTERNS.md) — the generalized
+  methodology.
+- [docs/BUILD/ANDROID.md](docs/BUILD/ANDROID.md) — this port as a case study:
+  pipeline, five mechanics, debugging toolbox, traps, regression checklist.
+- [docs/port/TOUCH_CONTROLS.md](docs/port/TOUCH_CONTROLS.md) — mouse-driven RTS →
+  touch, every design decision with its reason.
 
-## Known issues
+## Contributing
 
-- Long sessions on iPad can be killed by iOS for memory (~3 GB+ resident); the app
-  exits to the home screen with no dialog. Session logs (current + previous) are in
-  the Files app under the game's folder. Under investigation.
-- Backgrounding mid-game can occasionally crash on iOS — the lifecycle pause covers
-  the common paths; a rare race remains. Save often.
+Human or AI agent, the door is open — this repo is deliberately **AI-first**:
 
-## What's next: Renegade 👀
-
-Generals had a chain of giants to stand on. **Command & Conquer: Renegade** — EA's
-2002 FPS from the same GPL source release — has far less: no native macOS or iOS
-build of the W3D engine has ever shipped (Mac players today go through Wine-based
-compatibility layers). The [OpenW3D](https://github.com/w3dhub/OpenW3D) community
-project has real cross-platform groundwork — a DXVK wrapper scaffold and SDL3 build
-plumbing — with Mac/Linux on its roadmap, and that groundwork is exactly what we
-built on.
-
-Same methodology as this repo, much deeper water: OpenW3D's Win32 compat scaffold
-expanded by ~3,000 lines (the engine calls raw Windows APIs for file finding,
-keyboard state, COM), a case-sensitivity strategy for twenty thousand asset paths,
-the DXVK/MoltenVK renderer bring-up, the audio/video stack, and FPS touch controls.
-It's playable today — campaign, cinematics, mission scripts — on a Mac and an
-iPhone. For scale: this Generals port added ~2,200 lines on top of GeneralsX;
-Renegade needed ~6,700 on top of the Windows-only source.
-
-Repo drops soon, with the OpenW3D lineage credited the way this repo credits its
-chain. Same rules: GPL v3, bring your own copy, full engineering log.
+- **Agents start at [AGENTS.md](AGENTS.md)**; issues labeled
+  [`ai-ready`](https://github.com/fadi-labib/Generals-Android/issues?q=is%3Aissue+is%3Aopen+label%3Aai-ready)
+  carry enough context to work without a clarification round-trip.
+- **Humans start at [CONTRIBUTING.md](CONTRIBUTING.md)**; testing reports from real
+  devices are as valuable as code — especially non-Samsung Adreno devices.
+- Every PR declares its AI involvement and shows verification evidence — the
+  [PR template](.github/PULL_REQUEST_TEMPLATE.md) includes the on-device
+  [regression checklist](docs/BUILD/ANDROID.md#regression-checklist-definition-of-still-works).
+- Questions and show-and-tell:
+  [Discussions](https://github.com/fadi-labib/Generals-Android/discussions).
 
 ## Lineage & credits
 
-This port is the newest link in a long chain, and the earlier links did foundational
-work that this repo inherits everywhere:
+Full credit chain, because none of this starts from zero: **Westwood / EA Pacific**
+(the game), **EA** (the GPL v3 source release),
+**[TheSuperHackers](https://github.com/TheSuperHackers/GeneralsGameCode)** (community
+mainline), **[feliwir](https://github.com/feliwir)** (FFmpeg/OpenAL backends,
+[OpenSAGE](https://github.com/OpenSAGE/OpenSAGE)),
+**[Fighter19](https://github.com/Fighter19/CnC_Generals_Zero_Hour)** (Unix port),
+**[fbraz3/GeneralsX](https://github.com/fbraz3/GeneralsX)** (macOS/Linux port),
+**[ammaarreshi/Generals-Mac-iOS-iPad](https://github.com/ammaarreshi/Generals-Mac-iOS-iPad)**
+(iOS/iPadOS port, this repo's direct parent), **[Mesa
+Turnip](https://docs.mesa3d.org/drivers/freedreno.html)** /
+**[libadrenotools](https://github.com/bylaws/libadrenotools)** /
+**[K11MCH1's driver builds](https://github.com/K11MCH1/AdrenoToolsDrivers)** (the
+open Vulkan 1.3 stack that makes the Android renderer possible), and **DXVK, SDL,
+OpenAL Soft, FFmpeg** — the load-bearing walls.
 
-- **Westwood / EA Pacific** — the game; **EA** — the GPL v3 source release
-- **[TheSuperHackers/GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode)** —
-  the community mainline: build modernization, VC6→modern toolchain, and much of the
-  cross-platform groundwork, including the FFmpeg video backend authored by
-  **[feliwir](https://github.com/feliwir)** (of [OpenSAGE](https://github.com/OpenSAGE/OpenSAGE)),
-  who also authored the OpenAL audio device work this port's audio stack builds on
-- **[Fighter19/CnC_Generals_Zero_Hour](https://github.com/Fighter19/CnC_Generals_Zero_Hour)** —
-  the original Unix/64-bit port: SDL3 platform management, C++17
-  filesystem/threading, Freetype/Fontconfig text rendering, and the DXVK approach
-  this renderer path descends from
-- **[fbraz3/GeneralsX](https://github.com/fbraz3/GeneralsX)** — the macOS/Linux port
-  this fork builds on directly, integrating and extending the above
-- **This fork** — the iOS/iPadOS port (arm64-ios cross-build, DXVK-on-iOS, touch
-  controls, app lifecycle, packaging), the Android port (arm64-android cross-build,
-  DXVK-on-Android, Mesa Turnip via libadrenotools, Gradle/SDLActivity packaging),
-  and engine fixes, offered upstream
-- **[Mesa Turnip](https://docs.mesa3d.org/drivers/freedreno.html)** and
-  **[libadrenotools](https://github.com/bylaws/libadrenotools)** (with
-  [K11MCH1's driver builds](https://github.com/K11MCH1/AdrenoToolsDrivers)) — the
-  open Vulkan 1.3 driver stack that makes the Android renderer possible
-- **DXVK, MoltenVK, SDL, OpenAL Soft, FFmpeg, Liberation Fonts** — the load-bearing walls
-
-Engine code **GPL v3** (EA's source release → the chain above → this fork). Game
+Engine code **GPL v3** (EA's source release → the chain above → this repo). Game
 assets: not included, not licensed here.

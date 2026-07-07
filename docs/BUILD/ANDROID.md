@@ -9,9 +9,10 @@
 
 ![Skirmish match on Galaxy Tab S7+](screenshots/android-tab-s7plus-ingame.png)
 
-> **Continuing this work?** Read [ANDROID_HANDOVER.md](ANDROID_HANDOVER.md) first — the
-> mental model, debugging toolbox, traps, and prioritized next steps from the sessions
-> that got the port here.
+> **Continuing this work?** This document is the complete handover: the
+> [rendering pipeline](#rendering-pipeline-phase-3) is the mental model, and
+> [Development Loop, Debugging & Traps](#development-loop-debugging--traps) carries the
+> hard-won lessons from the sessions that got the port here.
 > Touch controls (gestures, state machine, design rationale, debugging):
 > [docs/port/TOUCH_CONTROLS.md](../port/TOUCH_CONTROLS.md).
 
@@ -402,6 +403,78 @@ before baking the fix into code.)
 
 ---
 
+## Development Loop, Debugging & Traps
+
+### Iteration cycle (~2 min once the toolchain is set up)
+
+```bash
+cmake --build build/android-vulkan --target z_generals -j$(nproc --ignore=1)
+./scripts/build/android/package-android-zh.sh --install
+adb shell am force-stop com.generalsx.generalszh
+adb logcat -c && adb shell am start -n com.generalsx.generalszh/.GeneralsXZHActivity
+```
+
+### Key files (the Android-specific surface area)
+
+| File | Role |
+|---|---|
+| `GeneralsMD/Code/Main/SDL3Main.cpp` | Entry point: Turnip staging, env setup (`DXVK_WSI_DRIVER`, `DXVK_CONFIG`, adrenotools vars), SDL init, window creation |
+| `GeneralsMD/Code/GameEngineDevice/Source/SDL3GameEngine.cpp` | Event loop; `GX_TOUCH_UI` guards the touch→mouse gesture translator + background render-pause (shared with iOS). Full design/debugging doc: [`docs/port/TOUCH_CONTROLS.md`](../port/TOUCH_CONTROLS.md) |
+| `Patches/dxvk-android.patch` | ALL DXVK changes (loader, WSI, meson, portability guards). Applied idempotently by `cmake/dx8.cmake` to the `references/fbraz3-dxvk` submodule |
+| `cmake/dx8.cmake` | Drives the DXVK meson cross-build inside the cmake build |
+| `scripts/build/android/*.sh` | env check, adrenotools build, Turnip fetch, APK packaging, asset push, headless replay harness |
+| `android/app/` | Gradle shell app (SDLActivity subclass `GeneralsXZHActivity`) |
+
+**Rule: the DXVK submodule working tree must stay byte-identical to the patch.** If you
+edit DXVK code, regenerate: `cd references/fbraz3-dxvk && git diff >
+../../Patches/dxvk-android.patch`, and verify `diff <(git diff)
+../../Patches/dxvk-android.patch` says identical.
+
+### Debugging toolbox (earned the hard way)
+
+- **Game log lines** all come out under logcat tag `GeneralsX` (stdio is redirected);
+  DXVK's own `info:`/`warn:`/`err:` lines are inside that tag too. The pump filters
+  `[INI]`/`[SUBSYS]`/`[GX-ISSUE144]` boot spam by default (~85% quieter); launch with the
+  `GENERALSX_VERBOSE` env set for the full firehose. `err:`/`warn:`/`ERROR`/`FATAL` are
+  never filtered.
+- **Boot health check** (after ~40 s):
+  `adb logcat -d | grep -cE "Actual swapchain properties"` → must be ≥1;
+  `grep -c NATIVE_WINDOW_IN_USE` → must be 0; `grep -c "beginning of crash"` → 0.
+- **A/B any DXVK option with no rebuild** — see the
+  [dxvk.conf tip](#debugging-tip-dxvkconf-without-rebuilding) above. This is how the
+  black-screen root cause was confirmed in minutes.
+- **Screenshots work**: `adb exec-out screencap -p > shot.png` captures the Vulkan
+  SurfaceView fine. A ~20 KB PNG = black screen; multi-MB = real content.
+- **Touch via adb**: `input tap` has a 0 ms down-up — the gesture translator's deferred
+  click lands in the same frame as the hover and menus DON'T activate. Use
+  `adb shell input swipe X Y X Y 150` to emulate a real finger. Menu buttons need ONE
+  such tap (if two are needed again, the translator regressed).
+- **Audio without ears**: `adb shell dumpsys media.audio_flinger` — look for the app's
+  uid with tracks not in standby. The OpenAL backend list shows in logcat tag `openal`
+  ("Supported backends: opensl, null, wave" — opensl must be chosen).
+- **Two devices in DXVK logs** (`grep -c "Device properties:"`): two is currently NORMAL
+  at boot and load-bearing — see [#8](https://github.com/fadi-labib/Generals-Android/issues/8)
+  and Known issues below. Three+ means something new is wrong.
+
+### Traps that will bite again if forgotten
+
+- `__ANDROID__` **also defines** `__linux__`. Any `#if defined(__linux__)` desktop
+  workaround silently applies to Android — that's exactly how audio got muted (a
+  desktop-only `ALSOFT_DRIVERS` override forced the null backend). When touching platform
+  guards, always ask "and what does this do on Android?"
+- In release builds `WWASSERT` is a no-op — engine invariants like "device must be null
+  before Create_Device" silently don't hold.
+- DXVK can return `D3D_OK` with a **null back buffer** (`_Get_DX8_Back_Buffer`); guard
+  every back-buffer consumer (see `W3DSmudge.cpp` for the pattern: degrade the effect,
+  don't crash).
+- The 2003 codebase assumes `new` returns zeroed memory (desktop routes through a
+  memset-ing pool allocator; Android uses `calloc`). A nonsense-pointer SIGSEGV in a
+  constructor-adjacent path usually means "uninitialized member desktop got away with"
+  (see the `Pathfinder`, `W3DBridgeBuffer`, `W3DSmudgeManager` fixes).
+- Samsung sideload verification failures → see [Device Setup](#device-setup).
+
+---
+
 ## Known Issues & Remaining Work
 
 **Resolved during the 2026-07-07 session** (kept here so future readers know these were
@@ -459,7 +532,21 @@ real and are fixed, not never-encountered):
   needs an asset-transcode fallback (Phase 0 research) —
   [#9](https://github.com/fadi-labib/Generals-Android/issues/9).
 - Deeper lifecycle: rotation, split-screen, low-memory kills, save-on-pause.
-- Campaign / Generals Challenge / video playback testing.
+
+---
+
+## Regression Checklist (definition of "still works")
+
+After any change, verify on-device:
+
+1. Boot reaches the main menu with the animated shell map (screenshot is multi-MB).
+2. `Actual swapchain properties` in logcat; zero `NATIVE_WINDOW_IN_USE`; zero
+   `beginning of crash`.
+3. One 150 ms swipe-tap on SOLO PLAY opens the submenu (single-tap works).
+4. Skirmish: map select → PLAY GAME → in-game HUD with FPS counter and running
+   game clock.
+5. `dumpsys media.audio_flinger` shows the app's tracks active (not standby).
+6. HOME → relaunch: same PID, rendering resumed.
 
 ---
 

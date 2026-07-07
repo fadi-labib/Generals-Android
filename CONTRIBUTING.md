@@ -16,7 +16,7 @@ Creating changes with LLM generated code is generally allowed. The author is res
 
 This repository is set up to be worked on by AI coding agents as first-class contributors:
 
-- **Agents start at [AGENTS.md](AGENTS.md)** — architecture, entry points, and required context. For the Android port specifically, [docs/BUILD/ANDROID_HANDOVER.md](docs/BUILD/ANDROID_HANDOVER.md) is the complete mental model (written agent-to-agent).
+- **Agents start at [AGENTS.md](AGENTS.md)** — architecture, entry points, and required context. For the Android port specifically, [docs/BUILD/ANDROID.md](docs/BUILD/ANDROID.md) is the complete mental model: build guide, rendering pipeline, debugging toolbox, traps, and regression checklist.
 - **Claude Code users** can onboard with full project context via the shared onboarding guide: run `claude` and open https://claude.ai/claude-code/onboard/03vfXGVR2J--
 - **Issues labeled `ai-ready`** carry enough context (file paths, doc references, acceptance criteria) for an agent to work them without further clarification.
 - The PR template's **AI assistance disclosure** and **verification evidence** sections are mandatory — an agent (or its operator) must show what was built and run, not assert it. On-device claims require the regression checklist.

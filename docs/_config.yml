@@ -1,5 +1,8 @@
 title: Generals Zero Hour on Android
 description: C&C Generals Zero Hour running natively on Android — Vulkan (Turnip + DXVK), SDL3, OpenAL
 theme: jekyll-theme-primer
-# WORKDIR/superpowers are internal planning notes; keep the published site to real docs.
-exclude: [WORKDIR, superpowers, port]
+plugins:
+  - jekyll-sitemap
+  - jekyll-seo-tag
+# Android-relevant docs are published; the upstream desktop story is not.
+exclude: [BUILD/LINUX.md, BUILD/MACOS.md, DEV_BLOG]
