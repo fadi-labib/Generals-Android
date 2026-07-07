@@ -102,7 +102,7 @@ device is attached.
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/fbraz3/GeneralsX.git
+git clone https://github.com/ammaarreshi/Generals-Mac-iOS-iPad.git GeneralsX
 cd GeneralsX
 ```
 
@@ -432,22 +432,33 @@ real and are fixed, not never-encountered):
 
 - **`MISSING: 'GUI:CustomMission'`** label in the Solo Play menu — upstream localization gap,
   cosmetic.
-- **16-bit depth buffer**: the surviving device is created with `D3DFMT_D16` (the engine's
-  fullscreen mode-matching fails for the native panel resolution and its `D3DFMT_D32` default
-  is rejected). Possible z-fighting on large maps; a future fix is defaulting to `D24S8` on
-  Android.
-- **Log spam**: the engine's `[INI]`/`[SUBSYS]`/`[GX-ISSUE144]` debug traces flood logcat
-  during boot.
+- **Two-device boot / 16-bit depth** ([#8](https://github.com/fadi-labib/Generals-Android/issues/8)):
+  the engine creates a doomed first device (its `D3DFMT_D32` default is rejected) then a
+  surviving `D3DFMT_D16` device. Investigation established the two-device dance is
+  **load-bearing** — the 3D shell map renders black with a single device regardless of depth
+  (`D24S8`/`D16`) or present mode; the first device's teardown primes Turnip's presenter. It
+  is a DXVK/Turnip driver-lifecycle issue, **not** a depth/format one (an earlier "default
+  D24S8" idea was disproven on-device). Cosmetic/boot-time only; the game renders fine.
+- **Log spam** — *fixed* (`9455765a2`): the stderr→logcat pump now filters
+  `[INI]`/`[SUBSYS]`/`[GX-ISSUE144]` boot traces by default (~85% quieter). Set the
+  `GENERALSX_VERBOSE` env to restore the full firehose; `err:`/`warn:`/`ERROR`/`FATAL` are
+  never filtered.
 - **Audio quality/mix** verified only as "tracks are playing" (audio_flinger); not yet
   listened to by a human.
 
-**Remaining work (Phase 4 candidates):**
+**Remaining work (Phase 4 candidates)** — tracked as issues on
+[fadi-labib/Generals-Android](https://github.com/fadi-labib/Generals-Android/issues):
 
-- Touch gesture tuning under real gameplay (drag-box vs pan feel, long-press timing).
-- Deeper lifecycle: rotation, split-screen, low-memory kills, save-on-pause.
-- Performance: FPS currently ~30-60 at native 2800×1752; consider render-scale option.
+- Touch gesture tuning under real gameplay (drag-box vs pan feel, long-press timing) —
+  [#11](https://github.com/fadi-labib/Generals-Android/issues/11).
+- Campaign / Generals Challenge / video playback testing (untested on Android) —
+  [#12](https://github.com/fadi-labib/Generals-Android/issues/12).
+- Performance: FPS currently ~30-60 at native 2800×1752; render-scale option —
+  [#13](https://github.com/fadi-labib/Generals-Android/issues/13).
 - Non-Adreno devices: Xclipse 920 (Galaxy S22) has no BCn texture support and no Turnip —
-  needs an asset-transcode fallback (documented in the Phase 0 research).
+  needs an asset-transcode fallback (Phase 0 research) —
+  [#9](https://github.com/fadi-labib/Generals-Android/issues/9).
+- Deeper lifecycle: rotation, split-screen, low-memory kills, save-on-pause.
 - Campaign / Generals Challenge / video playback testing.
 
 ---
