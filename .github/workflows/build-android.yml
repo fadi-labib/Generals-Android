@@ -1,0 +1,56 @@
+name: Build Android
+
+# Compile-only Android check: configures the android-vulkan preset and builds
+# libmain.so + the DXVK d3d8/d3d9 cross-build. No Turnip/adrenotools/APK
+# packaging — that is release-android.yml's job. Proves a change still
+# cross-compiles for arm64-android.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  NDK_VERSION: 27.2.12479018
+
+jobs:
+  build:
+    name: Build Android (arm64, compile-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+
+      # cmake's Android DXVK path requires the local fork submodule at configure time
+      # and inits its nested submodules itself.
+      - name: Init DXVK submodule
+        run: git submodule update --init references/fbraz3-dxvk
+
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/node_modules /opt/hostedtoolcache/CodeQL
+
+      - name: Install host tools (meson, glslang for DXVK)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build glslang-tools nasm
+
+      - name: Install NDK r27 LTS
+        run: yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" >/dev/null
+
+      - name: vcpkg (full clone required by overlay triplet)
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$HOME/vcpkg"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh"
+
+      # Same key as release-android.yml so PR builds reuse the release run's cache.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: vcpkg-android-${{ hashFiles('vcpkg.json', 'cmake/triplets/arm64-android.cmake') }}
+          restore-keys: vcpkg-android-
+
+      - name: Configure + build (z_generals, DXVK)
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
+          export VCPKG_ROOT="$HOME/vcpkg"
+          cmake --preset android-vulkan
+          cmake --build build/android-vulkan --target z_generals dxvk_d3d8_install -j"$(nproc)"
