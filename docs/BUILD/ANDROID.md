@@ -9,6 +9,10 @@
 
 ![Skirmish match on Galaxy Tab S7+](screenshots/android-tab-s7plus-ingame.png)
 
+> **Continuing this work?** Read [ANDROID_HANDOVER.md](ANDROID_HANDOVER.md) first — the
+> mental model, debugging toolbox, traps, and prioritized next steps from the sessions
+> that got the port here.
+
 ## Prerequisites
 
 ### System Requirements

@@ -153,6 +153,7 @@ aren't supported yet — the honest list lives in
 | `ios/` | XcodeGen signing-stub project + `ios/config/` (staged Options.ini, dxvk.conf) |
 | `android/` | Gradle shell app (SDLActivity subclass) the game's `libmain.so` runs inside |
 | [`docs/BUILD/ANDROID.md`](docs/BUILD/ANDROID.md) | Android build guide: toolchain, DXVK/Turnip pipeline, device setup, known issues |
+| [`docs/BUILD/ANDROID_HANDOVER.md`](docs/BUILD/ANDROID_HANDOVER.md) | Handover for whoever (human or AI) continues the Android port: mental model, debugging toolbox, traps, prioritized next steps |
 | `Patches/dxvk-ios.patch` | DXVK changes the iOS d3d8/d3d9 dylibs are built from (applied via the local-fork build) |
 | `Patches/dxvk-android.patch` | DXVK changes for Android: Turnip-via-adrenotools Vulkan loader + single-loader Android WSI surface path |
 
