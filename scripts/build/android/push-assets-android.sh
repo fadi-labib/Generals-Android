@@ -6,6 +6,8 @@
 # Environment:
 #   GX_FONTS  fonts dir (default ~/GeneralsX/ios-staging/fonts; run
 #             scripts/build/ios/stage-fonts.sh once to create it)
+#   GX_UNCOMPRESSED_TEXTURES  RGBA8 texture overlay for non-BCn GPUs:
+#             auto (default, push only on non-Adreno) | 1 (force) | 0 (skip)
 set -euo pipefail
 
 SRC="${1:-${HOME}/GeneralsX/GeneralsZH}"
