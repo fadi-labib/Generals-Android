@@ -767,7 +767,11 @@ int main(int argc, char* argv[])
 		// dies with VK_ERROR_NATIVE_WINDOW_IN_USE_KHR and the screen stays black. With
 		// deferSurfaceCreation only the device that actually presents touches the
 		// window. overwrite=0 so a user-set DXVK_CONFIG still wins.
-		setenv("DXVK_CONFIG", "d3d9.deferSurfaceCreation = True", 0);
+		// samplerAnisotropy=16: the DX8 engine never requests anisotropic
+		// filtering, so terrain smears under the tilted RTS camera. Mobile GPUs
+		// (Adreno/Turnip and Xclipse alike) support it; force it for sharp ground
+		// textures. A user-supplied dxvk.conf can still override via the file.
+		setenv("DXVK_CONFIG", "d3d9.deferSurfaceCreation = True;d3d9.samplerAnisotropy = 16", 0);
 #endif
 
 		// GeneralsX @bugfix BenderAI 06/03/2026 - Exclude LLVMpipe Vulkan ICD before loading Vulkan.
