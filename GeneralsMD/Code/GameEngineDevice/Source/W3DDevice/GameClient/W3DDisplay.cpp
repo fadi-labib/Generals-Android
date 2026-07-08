@@ -598,12 +598,25 @@ static bool s_filteredDirty = true;
 static void buildFilteredResolutions()
 {
 	s_filteredResolutions.clear();
-	const RenderDeviceDescClass &devDesc = WW3D::Get_Render_Device_Desc(0);
-	const DynamicVectorClass<ResolutionDescClass> &resolutions = devDesc.Enumerate_Resolutions();
 
 	int nativeW = 0, nativeH = 0;
 	float density = 1.0f;
 	DX8Wrapper::GetNativeDisplaySize(nativeW, nativeH, density);
+
+	// GeneralsX @android - Some mobile drivers (e.g. Samsung Xclipse via DXVK)
+	// enumerate zero acceptable display modes, so Enumerate_Devices() adds no
+	// entry to the render-device table. Get_Render_Device_Desc(0) would then
+	// index an empty vector (WWASSERT is a no-op in release) -> SIGSEGV when the
+	// Options menu opens. Fall back to a single native-resolution entry.
+	if (WW3D::Get_Render_Device_Count() <= 0) {
+		if (nativeW > 0 && nativeH > 0)
+			s_filteredResolutions.push_back({nativeW, nativeH, 32});
+		s_filteredDirty = false;
+		return;
+	}
+
+	const RenderDeviceDescClass &devDesc = WW3D::Get_Render_Device_Desc(0);
+	const DynamicVectorClass<ResolutionDescClass> &resolutions = devDesc.Enumerate_Resolutions();
 
 	for (int i = 0; i < resolutions.Count(); i++) {
 		if (!isResolutionSupported(resolutions[i])) continue;
