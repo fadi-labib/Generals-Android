@@ -109,6 +109,12 @@ Render2DClass::Get_Default_Shader()
 	shader.Set_Fog_Func( ShaderClass::FOG_DISABLE );
 	shader.Set_Primary_Gradient( ShaderClass::GRADIENT_MODULATE );
 	shader.Set_Texturing( ShaderClass::TEXTURING_ENABLE );
+	// GeneralsX @android - 2D UI quads must never backface-cull. The winding in
+	// Internal_Add_Quad_Indicies was tuned for D3D8's front-face convention; on
+	// DXVK->Vulkan it flips, so with the preset default (CULL_MODE_ENABLE) one
+	// triangle of every quad is culled -> menu dims/panels render as diagonal
+	// half-triangles and dialog backgrounds go see-through. Disable culling.
+	shader.Set_Cull_Mode( ShaderClass::CULL_MODE_DISABLE );
 
 	return shader;
 }
