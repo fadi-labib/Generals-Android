@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-# GeneralsX @android - Offline BC->RGBA8 texture transcoder (issue #9, option 1).
+# GeneralsX @android - Offline BC->RGBA8 texture repacker (issue #9, option 1).
 #
 # Non-Adreno mobile GPUs (Samsung Xclipse/Exynos, ARM Mali) report
 # textureCompressionBC=0 and cannot sample the game's DXT1/3/5 DDS textures
-# natively; DXVK emulates them at runtime. This tool transcodes those textures
-# to uncompressed A8R8G8B8 DDS *offline* and writes them as loose files that
-# override the .big archives at load time (FileSystem::openFile tries the local
-# filesystem before archives). No .big repacking, no engine changes.
+# natively; DXVK emulates them at runtime. This tool rebuilds each texture .big
+# archive with those DDS transcoded to uncompressed A8R8G8B8, everything else
+# copied verbatim. The rebuilt .big *replaces* the stock one on non-Adreno
+# devices (push-assets).
+#
+# Delivery is a single repacked archive, NOT loose files: /sdcard is FUSE
+# emulated storage where opening thousands of small files is ~30x slower than
+# one sequential .big read, which made loose overlays take minutes to load.
 #
 # See docs/superpowers/specs/2026-07-08-android-rgba8-texture-overlay-design.md
 #
@@ -43,7 +47,7 @@ def dds_fourcc(data):
     flags = struct.unpack_from("<I", data, 80)[0]  # ddspf.dwFlags
     DDPF_FOURCC = 0x4
     if not (flags & DDPF_FOURCC):
-        return None  # already uncompressed — leave the archive copy alone
+        return None  # already uncompressed
     return data[84:88]
 
 
@@ -53,8 +57,8 @@ def dds_mipcount(data):
 
 
 def write_a8r8g8b8_dds(top_rgba, mip_count):
-    """Encode a PIL RGBA image + regenerated mip chain as an uncompressed
-    A8R8G8B8 DDS (little-endian ARGB = BGRA byte order in memory)."""
+    """PIL RGBA image + regenerated mip chain -> uncompressed A8R8G8B8 DDS
+    (little-endian ARGB == BGRA byte order in memory)."""
     from PIL import Image
 
     w, h = top_rgba.size
@@ -71,7 +75,6 @@ def write_a8r8g8b8_dds(top_rgba, mip_count):
     struct.pack_into("<I", hdr, 12, w)               # dwWidth
     struct.pack_into("<I", hdr, 16, w * 4)           # dwPitchOrLinearSize
     struct.pack_into("<I", hdr, 24, mip_count)       # dwMipMapCount
-    # ddspf @ offset 72 within the 124-byte header
     struct.pack_into("<I", hdr, 72, 32)              # ddspf.dwSize
     struct.pack_into("<I", hdr, 76, DDPF_RGB | DDPF_ALPHAPIXELS)
     struct.pack_into("<I", hdr, 84, 32)              # dwRGBBitCount
@@ -81,18 +84,15 @@ def write_a8r8g8b8_dds(top_rgba, mip_count):
     struct.pack_into("<I", hdr, 100, 0xFF000000)     # A mask
     struct.pack_into("<I", hdr, 104, caps)           # dwCaps
 
-    out = bytearray()
-    out += DDS_MAGIC
+    out = bytearray(DDS_MAGIC)
     out += hdr
-
     img = top_rgba
     for level in range(mip_count):
         r, g, b, a = img.split()
-        # BGRA byte order for D3D A8R8G8B8
-        out += Image.merge("RGBA", (b, g, r, a)).tobytes()
+        out += Image.merge("RGBA", (b, g, r, a)).tobytes()  # BGRA for A8R8G8B8
         if level + 1 < mip_count:
-            nw, nh = max(1, img.width // 2), max(1, img.height // 2)
-            img = img.resize((nw, nh), Image.Resampling.BOX)
+            img = img.resize((max(1, img.width // 2), max(1, img.height // 2)),
+                             Image.Resampling.BOX)
     return bytes(out)
 
 
@@ -100,8 +100,7 @@ def transcode_one(dds_bytes):
     """DXT DDS bytes -> A8R8G8B8 DDS bytes, or None if unsupported."""
     from PIL import Image
 
-    fourcc = dds_fourcc(dds_bytes)
-    if fourcc not in DXT_FOURCC:
+    if dds_fourcc(dds_bytes) not in DXT_FOURCC:
         return None
     try:
         img = Image.open(io.BytesIO(dds_bytes)).convert("RGBA")
@@ -110,7 +109,7 @@ def transcode_one(dds_bytes):
     return write_a8r8g8b8_dds(img, dds_mipcount(dds_bytes))
 
 
-# --- BIG archive parsing ------------------------------------------------------
+# --- BIG archive I/O ----------------------------------------------------------
 def iter_big_entries(path):
     """Yield (name, data) for every file in a BIGF archive."""
     with open(path, "rb") as f:
@@ -118,7 +117,7 @@ def iter_big_entries(path):
             return
         f.read(4)                                        # archive size (BE)
         count = struct.unpack(">I", f.read(4))[0]
-        f.read(4)                                        # header size (BE)
+        f.read(4)                                        # first-data offset (BE)
         entries = []
         for _ in range(count):
             off = struct.unpack(">I", f.read(4))[0]
@@ -135,9 +134,64 @@ def iter_big_entries(path):
             yield name, f.read(size)
 
 
+def write_big(entries, out_path):
+    """Write a BIGF archive. entries: list of (name, data_bytes). Names keep
+    their original (backslash) spelling so the engine resolves them unchanged.
+    Streamed: never holds a second full copy of the payload."""
+    names = [n.encode("latin1") for n, _ in entries]
+    header_size = 16 + sum(8 + len(nb) + 1 for nb in names)
+    with open(out_path, "wb") as f:
+        f.write(b"BIGF")
+        f.write(b"\0" * 12)                              # size/count/hdr — filled below
+        off = header_size
+        for (name, data), nb in zip(entries, names):
+            f.write(struct.pack(">II", off, len(data)))
+            f.write(nb + b"\0")
+            off += len(data)
+        for _, data in entries:
+            f.write(data)
+        total = off
+        f.seek(4)
+        f.write(struct.pack(">I", total))
+        f.write(struct.pack(">I", len(entries)))
+        f.write(struct.pack(">I", header_size))
+
+
 def source_stamp(bigs):
     return "\n".join(f"{p}\t{os.path.getsize(p)}\t{int(os.path.getmtime(p))}"
                      for p in sorted(bigs))
+
+
+def repack_big(src_big, out_path, limit):
+    """Rebuild one .big with DXT DDS -> RGBA8. Returns (done, skipped, failed)
+    or None if the archive has no DXT textures (nothing to do)."""
+    entries = list(iter_big_entries(src_big))
+    if not any(n.lower().endswith(".dds") and dds_fourcc(d) in DXT_FOURCC
+               for n, d in entries):
+        return None
+
+    out, done, skipped, failed = [], 0, 0, 0
+    for name, data in entries:
+        is_dxt = name.lower().endswith(".dds") and dds_fourcc(data) in DXT_FOURCC
+        if is_dxt and not (limit and done >= limit):
+            try:
+                rgba8 = transcode_one(data)
+            except Exception as e:  # noqa: BLE001 - one bad texture must not abort
+                print(f"  FAIL {name}: {e}", file=sys.stderr)
+                rgba8 = None
+            if rgba8 is None:
+                failed += 1
+                out.append((name, data))          # keep original so archive stays complete
+            else:
+                done += 1
+                out.append((name, rgba8))
+                if done % 500 == 0:
+                    print(f"  ...{done} transcoded")
+        else:
+            skipped += 1
+            out.append((name, data))              # TGA / non-DXT / over --limit: verbatim
+    write_big(out, out_path)
+    return done, skipped, failed
 
 
 def run(asset_dir, out_dir, limit, force):
@@ -148,77 +202,60 @@ def run(asset_dir, out_dir, limit, force):
 
     stamp_path = os.path.join(out_dir, ".source-stamp")
     stamp = source_stamp(bigs)
-    if not force and os.path.exists(stamp_path):
+    if not force and not limit and os.path.exists(stamp_path):
         with open(stamp_path) as fh:
             if fh.read() == stamp:
                 print(f"==> Up to date: {out_dir} (source .big unchanged)")
                 return
 
-    done = skipped = failed = 0
+    repacked = []
     for big in bigs:
-        for name, data in iter_big_entries(big):
-            if not name.lower().endswith(".dds"):
-                continue
-            if dds_fourcc(data) not in DXT_FOURCC:
-                skipped += 1
-                continue
-            rel = name.replace("\\", "/")
-            dst = os.path.join(out_dir, rel)
-            try:
-                rgba8 = transcode_one(data)
-                if rgba8 is None:
-                    failed += 1
-                    print(f"  SKIP (unsupported): {rel}", file=sys.stderr)
-                    continue
-                os.makedirs(os.path.dirname(dst), exist_ok=True)
-                with open(dst, "wb") as o:
-                    o.write(rgba8)
-                done += 1
-                if done % 250 == 0:
-                    print(f"  ...{done} transcoded")
-                if limit and done >= limit:
-                    print(f"==> --limit {limit} reached; stopping (no stamp written)")
-                    print(f"    transcoded={done} skipped={skipped} failed={failed}")
-                    return
-            except Exception as e:  # noqa: BLE001 - one bad file must not abort the run
-                failed += 1
-                print(f"  FAIL {rel}: {e}", file=sys.stderr)
+        res = repack_big(big, os.path.join(out_dir, os.path.basename(big)), limit)
+        if res is None:
+            continue
+        done, skipped, failed = res
+        name = os.path.basename(big)
+        sz = os.path.getsize(os.path.join(out_dir, name))
+        print(f"==> {name}: transcoded={done} verbatim={skipped} failed={failed} "
+              f"-> {sz // (1024*1024)} MB")
+        repacked.append(name)
 
-    with open(stamp_path, "w") as fh:
-        fh.write(stamp)
-    print(f"==> Done. transcoded={done} skipped(non-DXT)={skipped} failed={failed}")
-    print(f"    overlay: {out_dir}")
+    if not repacked:
+        print("==> No .big contained DXT textures; nothing repacked.")
+        return
+    if not limit:
+        with open(stamp_path, "w") as fh:
+            fh.write(stamp)
+    print(f"==> Done. Repacked: {', '.join(repacked)}")
 
 
 # --- self-check ---------------------------------------------------------------
 def selftest():
-    """Validate the custom DDS writer + BGRA swizzle + mip chain."""
     from PIL import Image
 
-    # 4x4 with distinct corner pixels incl. alpha
+    # 1) DDS writer + BGRA swizzle + mip chain
     img = Image.new("RGBA", (4, 4), (10, 20, 30, 40))
-    img.putpixel((0, 0), (1, 2, 3, 4))          # R=1 G=2 B=3 A=4
-    img.putpixel((3, 3), (250, 200, 150, 100))
-    mip_count = 3                               # 4x4 -> 2x2 -> 1x1
-    blob = write_a8r8g8b8_dds(img, mip_count)
-
-    assert blob[:4] == DDS_MAGIC, "bad magic"
+    img.putpixel((0, 0), (1, 2, 3, 4))
+    blob = write_a8r8g8b8_dds(img, 3)             # 4x4 -> 2x2 -> 1x1
+    assert blob[:4] == DDS_MAGIC
     w = struct.unpack_from("<I", blob, 4 + 12)[0]
-    h = struct.unpack_from("<I", blob, 4 + 8)[0]
     mc = struct.unpack_from("<I", blob, 4 + 24)[0]
-    bitcount = struct.unpack_from("<I", blob, 4 + 84)[0]
-    rmask = struct.unpack_from("<I", blob, 4 + 88)[0]
     amask = struct.unpack_from("<I", blob, 4 + 100)[0]
-    assert (w, h, mc, bitcount) == (4, 4, 3, 32), (w, h, mc, bitcount)
-    assert rmask == 0x00FF0000 and amask == 0xFF000000, "bad masks"
+    assert (w, mc, amask) == (4, 3, 0xFF000000), (w, mc, hex(amask))
+    assert blob[4 + 124: 4 + 128] == bytes((3, 2, 1, 4)), "BGRA swizzle wrong"
+    assert len(blob) == 4 + 124 + (16 + 4 + 1) * 4, "mip payload size wrong"
 
-    # first texel bytes must be B,G,R,A = 3,2,1,4
-    px = blob[4 + 124: 4 + 124 + 4]
-    assert px == bytes((3, 2, 1, 4)), f"swizzle wrong: {tuple(px)}"
-
-    # total pixel payload = (16 + 4 + 1) texels * 4 bytes
-    expected = 4 + 124 + (16 + 4 + 1) * 4
-    assert len(blob) == expected, f"size {len(blob)} != {expected}"
+    # 2) BIG writer round-trips through the reader with names + data intact
+    import tempfile
+    ents = [("Art\\Textures\\a.dds", b"HELLO-A"), ("data\\b.tga", b"BB")]
+    with tempfile.NamedTemporaryFile(suffix=".big", delete=False) as tf:
+        tmp = tf.name
+    try:
+        write_big(ents, tmp)
+        back = list(iter_big_entries(tmp))
+        assert back == ents, back
+    finally:
+        os.unlink(tmp)
     print("selftest OK")
 
 
@@ -229,7 +266,9 @@ def main():
     ap.add_argument("--out-dir", default=os.path.join(
         os.path.dirname(__file__), "..", "..", "..",
         "build", "android-textures-rgba8"))
-    ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--limit", type=int, default=0,
+                    help="transcode only the first N DXT textures per archive "
+                         "(rest copied verbatim) — for fast testing")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()

@@ -60,13 +60,22 @@ case "${GX_UNCOMPRESSED_TEXTURES:-auto}" in
 esac
 
 if [[ "${push_overlay}" == 1 ]]; then
-  echo "==> Building RGBA8 texture overlay (cached; first run takes minutes)"
+  echo "==> Building RGBA8 texture .big (cached; first run takes minutes)"
   python3 "${SCRIPT_DIR}/transcode-textures-rgba8.py" --asset-dir "${SRC}" --out-dir "${OVERLAY_DIR}"
-  if [[ -d "${OVERLAY_DIR}/Art" ]]; then
-    echo "==> Pushing RGBA8 overlay ($(du -sh "${OVERLAY_DIR}/Art" | cut -f1)) to ${DST}/Art"
-    adb push --sync "${OVERLAY_DIR}/Art/." "${DST}/Art/"
+  # Remove any loose-file overlay from the retired delivery — a loose DDS on
+  # /sdcard would still shadow the .big (LocalFileSystem wins) and reintroduce
+  # the slow many-small-files load.
+  adb shell rm -rf "${DST}/Art" 2>/dev/null || true
+  shopt -s nullglob
+  repacked=("${OVERLAY_DIR}"/*.big)
+  shopt -u nullglob
+  if (( ${#repacked[@]} )); then
+    for big in "${repacked[@]}"; do
+      echo "==> Pushing RGBA8 $(basename "${big}") ($(du -sh "${big}" | cut -f1)) — replaces stock DXT archive"
+      adb push --sync "${big}" "${DST}/$(basename "${big}")"
+    done
   else
-    echo "WARNING: overlay build produced no ${OVERLAY_DIR}/Art; nothing to push" >&2
+    echo "WARNING: no repacked .big produced in ${OVERLAY_DIR}; nothing to push" >&2
   fi
 fi
 
